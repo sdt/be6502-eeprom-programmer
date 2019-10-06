@@ -3,7 +3,7 @@
 // PF: A0-A7
 // PK: A8-A14
 // PL: D0-D7
-// PH4: ~CE
+// PH4: ~CS
 // PH5: ~OE
 // PH6: ~WE
 
@@ -21,25 +21,67 @@
 // 65 ns @ 16 Mhz
 #define NOP __asm__ __volatile__ ("nop\n\t")
 
+#define BIT(n)  (1<<(n))
+
+const uint8_t Control_CS = BIT(4);
+const uint8_t Control_OE = BIT(5);
+const uint8_t Control_WE = BIT(6);
+const uint8_t CS_on  = 0;
+const uint8_t CS_off = Control_CS;
+const uint8_t OE_on  = 0;
+const uint8_t OE_off = Control_OE;
+const uint8_t WE_on  = 0;
+const uint8_t WE_off = Control_WE;
+const uint8_t Control_Mask = Control_CS | Control_OE | Control_WE;
+const uint8_t Data_Write = 0xff;
+const uint8_t Data_Read  = 0x00;
+
+static void setControlBits(uint8_t bits) {
+    PORT_OUT(CONTROL) = (PORT_OUT(CONTROL) & ~Control_Mask) | bits;
+}
+
+static void setAddress(uint16_t address) {
+    uint8_t addr_low  = address & 0x00ff;
+    uint8_t addr_high = address >> 8;
+
+    PORT_OUT(ADDR_LOW)  = addr_low;
+    PORT_OUT(ADDR_HIGH) = addr_high;
+}
+
 void eeprom_init() {
+    PORT_DIR(ADDR_LOW)  = 0xff; // A0-A7 output pins
     PORT_OUT(ADDR_LOW)  = 0x00;
-    PORT_DIR(ADDR_LOW)  = 0xff;  // A0-A7 output pins
 
+    PORT_DIR(ADDR_HIGH) = 0x7f; // A8-A15 output pins
     PORT_OUT(ADDR_HIGH) = 0x00;
-    PORT_DIR(ADDR_HIGH) = 0x7f;  // A8-A15 output pins
 
-    PORT_OUT(DATA)      = 0x00;
-    PORT_DIR(DATA)      = 0x00;
+    PORT_DIR(DATA)      = Data_Read;
+    PORT_OUT(DATA)      = 0x00; // data is input
 
-    PORT_OUT(CONTROL)   = 0x38;
-    PORT_DIR(CONTROL)   = 0x38;
+    PORT_DIR(CONTROL)   = Control_Mask;
+    setControlBits(CS_on | OE_off | WE_off);
 }
 
 uint8_t eeprom_readByte(uint16_t address) {
-    PORT_OUT(ADDR_LOW) = address & 0xff;
-    // tAA = 55/70/85 ns
-    NOP; NOP;
-    return PORT_IN(DATA);
+    setAddress(address);
+    setControlBits(CS_on | OE_on | WE_off);
+    NOP; NOP; NOP; // tACC = 150
+    PORT_DIR(DATA) = Data_Read;
+    uint8_t data = PORT_IN(DATA);
+    setControlBits(CS_on | OE_off | WE_off);
+    return data;
+}
+
+void eeprom_writeByte(uint16_t address, uint8_t data) {
+    setAddress(address);
+    setControlBits(CS_on | OE_off | WE_off);
+    PORT_DIR(DATA) = Data_Write;
+    PORT_OUT(DATA) = data;
+    setControlBits(CS_on | OE_off | WE_on); // WE -> on, latch addr
+    NOP; NOP; // tWP = 100
+    setControlBits(CS_on | OE_off | WE_off); // WE -> off, latch data
+    NOP; NOP; // tWP = 50
+    PORT_DIR(DATA) = Data_Read;
 }
 
 static void waitForKey(HardwareSerial& serial) {
