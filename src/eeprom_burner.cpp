@@ -36,6 +36,10 @@ const uint8_t Control_Mask = Control_CS | Control_OE | Control_WE;
 const uint8_t Data_Write = 0xff;
 const uint8_t Data_Read  = 0x00;
 
+static void setupIdle();
+static void setupRead();
+static bool waitForWriteCompletion(uint16_t address, uint8_t expectedData);
+
 static void setControlBits(uint8_t bits) {
     PORT_OUT(CONTROL) = (PORT_OUT(CONTROL) & ~Control_Mask) | bits;
 }
@@ -63,16 +67,16 @@ void eb_init() {
 }
 
 uint8_t eb_readByte(uint16_t address) {
+    PORT_DIR(DATA) = Data_Read;
     setAddress(address);
     setControlBits(CS_on | OE_on | WE_off);
     NOP; NOP; NOP; // tACC = 150
-    PORT_DIR(DATA) = Data_Read;
     uint8_t data = PORT_IN(DATA);
     setControlBits(CS_on | OE_off | WE_off);
     return data;
 }
 
-void eb_writeByte(uint16_t address, uint8_t data) {
+bool eb_writeByte(uint16_t address, uint8_t data) {
     setAddress(address);
     setControlBits(CS_on | OE_off | WE_off);
     PORT_DIR(DATA) = Data_Write;
@@ -81,7 +85,42 @@ void eb_writeByte(uint16_t address, uint8_t data) {
     NOP; NOP; // tWP = 100
     setControlBits(CS_on | OE_off | WE_off); // WE -> off, latch data
     NOP; NOP; // tWP = 50
+    return waitForWriteCompletion(address, data);
+}
+
+static void setupRead() {
+    setControlBits(CS_on | OE_on | WE_off);
     PORT_DIR(DATA) = Data_Read;
+    NOP; NOP; // tOE = 70ns
+}
+
+static void setupIdle() {
+    setControlBits(CS_on | OE_off | WE_off);
+    PORT_DIR(DATA) = Data_Read;
+}
+
+static bool waitForWriteCompletion(uint16_t address, uint8_t expectedData) {
+    setAddress(address);
+    NOP; NOP; NOP; // tACC = 150
+    setupRead();
+
+    const int maxRetries = 10000;
+    uint8_t readData = PORT_IN(DATA);
+    int attempt;
+    for (attempt = 0; (readData != expectedData)
+                            && (attempt < maxRetries); attempt++) {
+        // Toggle OE off then on again.
+        setControlBits(CS_on | OE_off | WE_off);
+        NOP; NOP; // tOE = 70ns
+        setControlBits(CS_on | OE_on | WE_off);
+        NOP; NOP; // tOE = 70ns
+        readData = PORT_IN(DATA);
+    }
+
+    Serial.println(attempt);
+
+    setupIdle();
+    return readData == expectedData;
 }
 
 static void waitForKey(HardwareSerial& serial) {

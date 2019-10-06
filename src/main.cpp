@@ -8,6 +8,8 @@ static void fillBuffer(uint8_t *buf, int bytes);
 
 static uint8_t databuffer[1024];
 
+static char buf[256];
+
 void setup() {
     Serial.begin(115200);
     randomiser_init(Serial);
@@ -16,40 +18,34 @@ void setup() {
 }
 
 void loop() {
-}
+    int good = 0;
+    int bad = 0;
+    for (uint16_t address = 0; address < ARRAY_COUNT(databuffer); address++) {
+        uint8_t data = databuffer[address];
 
-void xloop() {
-    static char buf[256];
-    static uint16_t address = 0;
-    static uint8_t  data = 0x10;
+        uint8_t oldData = eb_readByte(address);
+        bool ok = eb_writeByte(address, data);
+        uint8_t newData = eb_readByte(address);
 
-    if (!true) {
-        uint8_t oldData = eb_readByte(address);
-        sprintf(buf, "%04x %02x", address, oldData);
+        sprintf(buf, "%04x read:%02x writing:%02x=%s readback:%02x",
+            address, oldData, data,
+            ok ? "ok" : "FAILED",
+            newData);
         Serial.println(buf);
-    }
-    else {
-        uint8_t oldData = eb_readByte(address);
-        eb_writeByte(address, data);
-        sprintf(buf, "%04x read:%02x writing:%02x", address, oldData, data);
-        Serial.println(buf);
-        while (1) {
-            uint8_t newData = eb_readByte(address);
-            sprintf(buf, "... read back %02x: %s", newData,
-                (newData == data) ? "READY" : "not ready");
-            Serial.println(buf);
-            if (newData == data) {
-                break;
-            }
-            delay(10);
+
+        if (ok) {
+            good++;
         }
+        else {
+            bad++;
+        }
+
+//        delay(500);
     }
-
-
-    delay(500);
-
-    address = (address + 1) & 0x7fff;
-    data++;
+    Serial.println("Done");
+    Serial.print("Good: "); Serial.println(good);
+    Serial.print("Bad: "); Serial.println(bad);
+    while (1) { }
 }
 
 static void fillBuffer(uint8_t* buf, int bytes) {

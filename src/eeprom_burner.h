@@ -5,7 +5,7 @@
 
 extern void eb_init();
 extern uint8_t eb_readByte(uint16_t address);
-extern void eb_writeByte(uint16_t address, uint8_t data);
+extern bool eb_writeByte(uint16_t address, uint8_t data);
 extern void eb_pinTest(HardwareSerial& serial);
 
 #endif // INCLUDE_EEPROM_BURDER_H
