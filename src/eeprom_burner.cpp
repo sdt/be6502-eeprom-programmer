@@ -1,4 +1,4 @@
-#include "eeprom.h"
+#include "eeprom_burner.h"
 
 // PF: A0-A7
 // PK: A8-A14
@@ -48,7 +48,7 @@ static void setAddress(uint16_t address) {
     PORT_OUT(ADDR_HIGH) = addr_high;
 }
 
-void eeprom_init() {
+void eb_init() {
     PORT_DIR(ADDR_LOW)  = 0xff; // A0-A7 output pins
     PORT_OUT(ADDR_LOW)  = 0x00;
 
@@ -62,7 +62,7 @@ void eeprom_init() {
     setControlBits(CS_on | OE_off | WE_off);
 }
 
-uint8_t eeprom_readByte(uint16_t address) {
+uint8_t eb_readByte(uint16_t address) {
     setAddress(address);
     setControlBits(CS_on | OE_on | WE_off);
     NOP; NOP; NOP; // tACC = 150
@@ -72,7 +72,7 @@ uint8_t eeprom_readByte(uint16_t address) {
     return data;
 }
 
-void eeprom_writeByte(uint16_t address, uint8_t data) {
+void eb_writeByte(uint16_t address, uint8_t data) {
     setAddress(address);
     setControlBits(CS_on | OE_off | WE_off);
     PORT_DIR(DATA) = Data_Write;
@@ -103,7 +103,7 @@ static void waitForKey(HardwareSerial& serial) {
     serial.println("Pin " #number " is " func); \
     waitForKey(serial);
 
-void eeprom_pinTest(HardwareSerial& serial) {
+void eb_pinTest(HardwareSerial& serial) {
     SET_PIN(1,   ADDR_HIGH, 14-8);
     SET_PIN(2,   ADDR_HIGH, 12-8);
     SET_PIN(3,   ADDR_LOW,  7);
