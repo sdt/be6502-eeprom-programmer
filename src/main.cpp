@@ -20,8 +20,10 @@ void setup() {
 void loop() {
     int good = 0;
     int bad = 0;
-    for (uint16_t address = 0; address < ARRAY_COUNT(databuffer); address++) {
-        uint8_t data = databuffer[address];
+    uint16_t base = random(32) << 10;
+    for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset++) {
+        uint8_t data = databuffer[offset];
+        uint16_t address = base + offset;
 
         uint8_t oldData = eb_readByte(address);
         bool ok = eb_writeByte(address, data);
@@ -41,17 +43,16 @@ void loop() {
         else {
             bad++;
         }
-
-//        delay(500);
     }
     Serial.println("Done");
     Serial.print("Good: "); Serial.println(good);
     Serial.print("Bad: "); Serial.println(bad);
 
     good = bad = 0;
-    for (uint16_t address = 0; address < ARRAY_COUNT(databuffer); address++) {
+    for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset++) {
+        uint16_t address = base + offset;
         uint8_t got = eb_readByte(address);
-        uint8_t expected = databuffer[address];
+        uint8_t expected = databuffer[offset];
         bool ok = got == expected;
 
         if (!ok) {
@@ -67,8 +68,6 @@ void loop() {
         else {
             bad++;
         }
-
-//        delay(500);
     }
     Serial.println("Done");
     Serial.print("Good: "); Serial.println(good);
