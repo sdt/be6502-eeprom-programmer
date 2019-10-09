@@ -9,9 +9,11 @@
 
 #define _PASTE(A, B)        A##B
 
-#define PORT_OUT(PORT_ID)   _PASTE(PORT, PORT_ID)
-#define PORT_IN(PORT_ID)    _PASTE(PIN, PORT_ID)
-#define PORT_DIR(PORT_ID)   _PASTE(DDR, PORT_ID)
+#define PORT_OUT(port_id)           _PASTE(PORT, port_id)
+#define PORT_IN(port_id)            _PASTE(PIN, port_id)
+#define PORT_DIR(port_id)           _PASTE(DDR, port_id)
+#define SET_PORT_BIT(port, mask)    (PORT_OUT(port) |= (mask))
+#define CLEAR_PORT_BIT(port, mask)  (PORT_OUT(port) &= ~(mask))
 
 #define ADDR_LOW            F
 #define ADDR_HIGH           K
@@ -26,12 +28,6 @@
 const uint8_t Control_CS = BIT(4);
 const uint8_t Control_OE = BIT(5);
 const uint8_t Control_WE = BIT(6);
-const uint8_t CS_on  = 0;
-const uint8_t CS_off = Control_CS;
-const uint8_t OE_on  = 0;
-const uint8_t OE_off = Control_OE;
-const uint8_t WE_on  = 0;
-const uint8_t WE_off = Control_WE;
 const uint8_t Control_Mask = Control_CS | Control_OE | Control_WE;
 const uint8_t Data_Write = 0xff;
 const uint8_t Data_Read  = 0x00;
@@ -39,11 +35,17 @@ const uint8_t Data_Read  = 0x00;
 static void setupIdle();
 static void setupRead();
 static void setupWrite();
-static bool waitForWriteCompletion(uint16_t address, uint8_t expectedData);
+static bool waitForWriteCompletion(uint8_t expectedData);
 
-static void setControlBits(uint8_t bits) {
-    PORT_OUT(CONTROL) = (PORT_OUT(CONTROL) & ~Control_Mask) | bits;
-}
+// All three control lines are active low.
+static void chipSelectOn()      { CLEAR_PORT_BIT(CONTROL, Control_CS); }
+static void chipSelectOff()     { SET_PORT_BIT(CONTROL,   Control_CS); }
+
+static void outputEnableOn()    { CLEAR_PORT_BIT(CONTROL, Control_OE); }
+static void outputEnableOff()   { SET_PORT_BIT(CONTROL,   Control_OE); }
+
+static void writeEnableOn()     { CLEAR_PORT_BIT(CONTROL, Control_WE); }
+static void writeEnableOff()    { SET_PORT_BIT(CONTROL,   Control_WE); }
 
 static void setAddress(uint16_t address) {
     uint8_t addr_low  = address & 0x00ff;
@@ -64,71 +66,79 @@ void eb_init() {
     PORT_OUT(DATA)      = 0x00; // data is input
 
     PORT_DIR(CONTROL)   = Control_Mask;
-    setControlBits(CS_on | OE_off | WE_off);
+    chipSelectOff();
+    outputEnableOff();
+    writeEnableOff();
 }
 
 uint8_t eb_readByte(uint16_t address) {
     setAddress(address);
-    setupRead();
+    chipSelectOn();
+    outputEnableOn();
+
+    NOP; NOP; NOP; // tACC = 150ns, tCE = 150ns, tOE = 70
+
     uint8_t data = PORT_IN(DATA);
-    setupIdle();
+
+    outputEnableOff();
+    chipSelectOff();
+
+    NOP; // tDF = 50ns
+
     return data;
 }
 
 bool eb_writeByte(uint16_t address, uint8_t data) {
     setAddress(address);
-    setupWrite();
-    PORT_OUT(DATA) = data;
-    NOP; NOP; // tWP = 100
-    setControlBits(CS_on | OE_off | WE_on); // WE -> on, latch addr
-    NOP; NOP; // tWP = 100
-    setControlBits(CS_on | OE_off | WE_off); // WE -> off, latch data
-    NOP; NOP; // tWPH = 50
-    return waitForWriteCompletion(address, data);
-}
-
-static void setupWrite() {
-    setControlBits(CS_on | OE_off | WE_off);
     PORT_DIR(DATA) = Data_Write;
-    NOP; NOP; // tOE = 70ns
-}
+    PORT_OUT(DATA) = data;
 
-static void setupRead() {
-    setControlBits(CS_on | OE_on | WE_off);     // OE off -> on
+    chipSelectOn();
+    writeEnableOn();    // falling edge latches address
+
+    NOP; NOP;           // tWP = 100
+
+    writeEnableOff();   // rising edge latches data
+    chipSelectOff();
+
+    NOP;
+
     PORT_DIR(DATA) = Data_Read;
-    NOP; NOP; NOP; // tACC = 150ns
+
+    return waitForWriteCompletion(data);
 }
 
-static void setupIdle() {
-    setControlBits(CS_on | OE_off | WE_off);
-    PORT_DIR(DATA) = Data_Read;
-}
+static bool waitForWriteCompletion(uint8_t expectedData) {
 
-static bool waitForWriteCompletion(uint16_t address, uint8_t expectedData) {
-    setAddress(address);
-    NOP; NOP; NOP; // tACC = 150
-    setupRead();
+    const long maxRetries = 100000;
 
-    const long maxRetries = 1000;
-    uint8_t readData = PORT_IN(DATA);
-    long attempt;
-    for (attempt = 0; attempt < maxRetries; attempt++) {
-        // Toggle OE off then on again.
-        setControlBits(CS_on | OE_off | WE_off);
-        NOP; NOP; NOP; NOP; // tOE = 70ns
-        setControlBits(CS_on | OE_on | WE_off);
-        NOP; NOP; NOP; NOP; // tOE = 70ns
-        readData = PORT_IN(DATA);
+    // On entry, all control lines are off (high), and DATA port is input
+    chipSelectOn();
+    outputEnableOn();
+    NOP; NOP;
+    uint8_t prevData = PORT_IN(DATA);
+    chipSelectOff();
+    outputEnableOff();
+    NOP; NOP;
 
-        if (readData == expectedData) {
-            break;
+    for (long attempt = 0; attempt < maxRetries; attempt++) {
+        chipSelectOn();
+        outputEnableOn();
+        NOP; NOP;
+        uint8_t nextData = PORT_IN(DATA);
+        chipSelectOff();
+        outputEnableOff();
+        NOP; NOP;
+
+        if (prevData == nextData) {
+            return nextData == expectedData;
         }
 
-        delayMicroseconds(1000);
+        prevData = nextData;
     }
 
-    setupIdle();
-    return readData == expectedData;
+    // Timed out
+    return false;
 }
 
 static void waitForKey(HardwareSerial& serial) {
