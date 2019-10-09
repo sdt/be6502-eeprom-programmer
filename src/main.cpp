@@ -27,11 +27,13 @@ void loop() {
         bool ok = eb_writeByte(address, data);
         uint8_t newData = eb_readByte(address);
 
-        sprintf(buf, "%04x read:%02x writing:%02x=%s readback:%02x",
-            address, oldData, data,
-            ok ? "ok" : "FAILED",
-            newData);
-        Serial.println(buf);
+        if (!ok) {
+            sprintf(buf, "%04x read:%02x writing:%02x=%s readback:%02x",
+                address, oldData, data,
+                ok ? "ok" : "FAILED",
+                newData);
+            Serial.println(buf);
+        }
 
         if (ok) {
             good++;
@@ -45,6 +47,33 @@ void loop() {
     Serial.println("Done");
     Serial.print("Good: "); Serial.println(good);
     Serial.print("Bad: "); Serial.println(bad);
+
+    good = bad = 0;
+    for (uint16_t address = 0; address < ARRAY_COUNT(databuffer); address++) {
+        uint8_t got = eb_readByte(address);
+        uint8_t expected = databuffer[address];
+        bool ok = got == expected;
+
+        if (!ok) {
+            sprintf(buf, "%04x read:%02x expected:%02x=%s",
+                address, got, expected,
+                ok ? "ok" : "FAILED");
+            Serial.println(buf);
+        }
+
+        if (ok) {
+            good++;
+        }
+        else {
+            bad++;
+        }
+
+//        delay(500);
+    }
+    Serial.println("Done");
+    Serial.print("Good: "); Serial.println(good);
+    Serial.print("Bad: "); Serial.println(bad);
+
     while (1) { }
 }
 

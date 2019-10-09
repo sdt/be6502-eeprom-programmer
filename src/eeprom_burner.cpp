@@ -38,6 +38,7 @@ const uint8_t Data_Read  = 0x00;
 
 static void setupIdle();
 static void setupRead();
+static void setupWrite();
 static bool waitForWriteCompletion(uint16_t address, uint8_t expectedData);
 
 static void setControlBits(uint8_t bits) {
@@ -67,31 +68,35 @@ void eb_init() {
 }
 
 uint8_t eb_readByte(uint16_t address) {
-    PORT_DIR(DATA) = Data_Read;
     setAddress(address);
-    setControlBits(CS_on | OE_on | WE_off);
-    NOP; NOP; NOP; // tACC = 150
+    setupRead();
     uint8_t data = PORT_IN(DATA);
-    setControlBits(CS_on | OE_off | WE_off);
+    setupIdle();
     return data;
 }
 
 bool eb_writeByte(uint16_t address, uint8_t data) {
     setAddress(address);
-    setControlBits(CS_on | OE_off | WE_off);
-    PORT_DIR(DATA) = Data_Write;
+    setupWrite();
     PORT_OUT(DATA) = data;
+    NOP; NOP; // tWP = 100
     setControlBits(CS_on | OE_off | WE_on); // WE -> on, latch addr
     NOP; NOP; // tWP = 100
     setControlBits(CS_on | OE_off | WE_off); // WE -> off, latch data
-    NOP; NOP; // tWP = 50
+    NOP; NOP; // tWPH = 50
     return waitForWriteCompletion(address, data);
 }
 
-static void setupRead() {
-    setControlBits(CS_on | OE_on | WE_off);
-    PORT_DIR(DATA) = Data_Read;
+static void setupWrite() {
+    setControlBits(CS_on | OE_off | WE_off);
+    PORT_DIR(DATA) = Data_Write;
     NOP; NOP; // tOE = 70ns
+}
+
+static void setupRead() {
+    setControlBits(CS_on | OE_on | WE_off);     // OE off -> on
+    PORT_DIR(DATA) = Data_Read;
+    NOP; NOP; NOP; // tACC = 150ns
 }
 
 static void setupIdle() {
@@ -104,20 +109,23 @@ static bool waitForWriteCompletion(uint16_t address, uint8_t expectedData) {
     NOP; NOP; NOP; // tACC = 150
     setupRead();
 
-    const int maxRetries = 10000;
+    const long maxRetries = 1000;
     uint8_t readData = PORT_IN(DATA);
-    int attempt;
-    for (attempt = 0; (readData != expectedData)
-                            && (attempt < maxRetries); attempt++) {
+    long attempt;
+    for (attempt = 0; attempt < maxRetries; attempt++) {
         // Toggle OE off then on again.
         setControlBits(CS_on | OE_off | WE_off);
-        NOP; NOP; // tOE = 70ns
+        NOP; NOP; NOP; NOP; // tOE = 70ns
         setControlBits(CS_on | OE_on | WE_off);
-        NOP; NOP; // tOE = 70ns
+        NOP; NOP; NOP; NOP; // tOE = 70ns
         readData = PORT_IN(DATA);
-    }
 
-    Serial.println(attempt);
+        if (readData == expectedData) {
+            break;
+        }
+
+        delayMicroseconds(1000);
+    }
 
     setupIdle();
     return readData == expectedData;
