@@ -9,6 +9,8 @@ static void fillBuffer(uint8_t *buf, int bytes);
 static uint8_t databuffer[1024];
 
 static char buf[256];
+#define PRINTF(fmt, ...)    \
+    { sprintf(buf, fmt, __VA_ARGS__); Serial.println(buf); }
 
 void setup() {
     Serial.begin(115200);
@@ -18,23 +20,19 @@ void setup() {
 }
 
 void loop() {
+
     int good = 0;
     int bad = 0;
     uint16_t base = random(32) << 10;
-    for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset++) {
-        uint8_t data = databuffer[offset];
-        uint16_t address = base + offset;
 
-        uint8_t oldData = eb_readByte(address);
-        bool ok = eb_writeByte(address, data);
-        uint8_t newData = eb_readByte(address);
+    PRINTF("Writing pages to %04x", base);
+    const uint8_t pageSize = 64;
+    for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset += pageSize) {
+        uint16_t address = base + offset;
+        bool ok = eb_writePage(address, databuffer + offset, pageSize);
 
         if (!ok) {
-            sprintf(buf, "%04x read:%02x writing:%02x=%s readback:%02x",
-                address, oldData, data,
-                ok ? "ok" : "FAILED",
-                newData);
-            Serial.println(buf);
+            PRINTF("%04x %s", address, ok ? "ok" : "FAILED");
         }
 
         if (ok) {
@@ -44,10 +42,33 @@ void loop() {
             bad++;
         }
     }
-    Serial.println("Done");
-    Serial.print("Good: "); Serial.println(good);
-    Serial.print("Bad: "); Serial.println(bad);
+/*
+    for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset++) {
+        uint8_t data = databuffer[offset];
+        uint16_t address = base + offset;
 
+        uint8_t oldData = eb_readByte(address);
+        bool ok = eb_writeByte(address, data);
+        uint8_t newData = eb_readByte(address);
+
+        if (!ok) {
+            PRINTF("%04x read:%02x writing:%02x=%s readback:%02x",
+                address, oldData, data,
+                ok ? "ok" : "FAILED",
+                newData);
+        }
+
+        if (ok) {
+            good++;
+        }
+        else {
+            bad++;
+        }
+    }
+*/
+    PRINTF("Done: %d good, %d bad", good, bad);
+
+    PRINTF("Reading bytes from %04x", base);
     good = bad = 0;
     for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset++) {
         uint16_t address = base + offset;
@@ -56,7 +77,7 @@ void loop() {
         bool ok = got == expected;
 
         if (!ok) {
-            sprintf(buf, "%04x read:%02x expected:%02x=%s",
+            PRINTF("%04x read:%02x expected:%02x=%s",
                 address, got, expected,
                 ok ? "ok" : "FAILED");
             Serial.println(buf);
@@ -69,9 +90,7 @@ void loop() {
             bad++;
         }
     }
-    Serial.println("Done");
-    Serial.print("Good: "); Serial.println(good);
-    Serial.print("Bad: "); Serial.println(bad);
+    PRINTF("Done: %d good, %d bad", good, bad);
 
     while (1) { }
 }

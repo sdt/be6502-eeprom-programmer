@@ -32,6 +32,9 @@ const uint8_t Control_Mask = Control_CS | Control_OE | Control_WE;
 const uint8_t Data_Write = 0xff;
 const uint8_t Data_Read  = 0x00;
 
+const uint8_t Page_Bits = 6;
+const uint8_t Page_Size = 1 << Page_Bits;
+
 static void setupIdle();
 static void setupRead();
 static void setupWrite();
@@ -101,11 +104,45 @@ bool eb_writeByte(uint16_t address, uint8_t data) {
     writeEnableOff();   // rising edge latches data
     chipSelectOff();
 
-    NOP;
+    NOP;                // tWPH = 50
 
     PORT_DIR(DATA) = Data_Read;
 
     return waitForWriteCompletion(data);
+}
+
+extern bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
+    if (size == 0) {
+        return true;
+    }
+
+    uint16_t startPage = address >> Page_Bits;
+    uint16_t endPage   = (address + size - 1) >> Page_Bits;
+
+    if (startPage != endPage) {
+        return false;
+    }
+
+    for (uint8_t offset = 0; offset < size; offset++) {
+
+        setAddress(address + offset);
+        PORT_DIR(DATA) = Data_Write;
+        PORT_OUT(DATA) = data[offset];;
+
+        chipSelectOn();
+        writeEnableOn();    // falling edge latches address
+
+        NOP; NOP;           // tWP = 100
+
+        writeEnableOff();   // rising edge latches data
+        chipSelectOff();
+
+        NOP;                // tWPH = 50
+    }
+
+    PORT_DIR(DATA) = Data_Read;
+
+    return waitForWriteCompletion(data[size - 1]);
 }
 
 static bool waitForWriteCompletion(uint8_t expectedData) {
