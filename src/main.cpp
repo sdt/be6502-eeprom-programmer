@@ -21,15 +21,15 @@ void setup() {
 
 void loop() {
 
-    int good = 0;
-    int bad = 0;
-    uint16_t base = random(32) << 10;
+    uint16_t good = 0;
+    uint16_t bad = 0;
 
-    PRINTF("Writing pages to %04x", base);
+    const uint16_t romSize = 1024u * 32u;
     const uint8_t pageSize = 64;
-    for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset += pageSize) {
-        uint16_t address = base + offset;
-        bool ok = eb_writePage(address, databuffer + offset, pageSize);
+    PRINTF("Writing %u pages", romSize / pageSize);
+    for (uint16_t address = 0; address < romSize; address += pageSize) {
+        uint16_t dataOffset = address & (ARRAY_COUNT(databuffer)-1);
+        bool ok = eb_writePage(address, databuffer + dataOffset, pageSize);
 
         if (!ok) {
             PRINTF("%04x %s", address, ok ? "ok" : "FAILED");
@@ -42,38 +42,14 @@ void loop() {
             bad++;
         }
     }
-/*
-    for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset++) {
-        uint8_t data = databuffer[offset];
-        uint16_t address = base + offset;
+    PRINTF("Done: %u pages good, %u bad", good, bad);
 
-        uint8_t oldData = eb_readByte(address);
-        bool ok = eb_writeByte(address, data);
-        uint8_t newData = eb_readByte(address);
-
-        if (!ok) {
-            PRINTF("%04x read:%02x writing:%02x=%s readback:%02x",
-                address, oldData, data,
-                ok ? "ok" : "FAILED",
-                newData);
-        }
-
-        if (ok) {
-            good++;
-        }
-        else {
-            bad++;
-        }
-    }
-*/
-    PRINTF("Done: %d good, %d bad", good, bad);
-
-    PRINTF("Reading bytes from %04x", base);
+    PRINTF("Reading %u bytes", romSize);
     good = bad = 0;
-    for (uint16_t offset = 0; offset < ARRAY_COUNT(databuffer); offset++) {
-        uint16_t address = base + offset;
+    for (uint16_t address = 0; address < romSize; address++) {
+        uint16_t dataOffset = address & (ARRAY_COUNT(databuffer)-1);
         uint8_t got = eb_readByte(address);
-        uint8_t expected = databuffer[offset];
+        uint8_t expected = databuffer[dataOffset];
         bool ok = got == expected;
 
         if (!ok) {
@@ -90,7 +66,7 @@ void loop() {
             bad++;
         }
     }
-    PRINTF("Done: %d good, %d bad", good, bad);
+    PRINTF("Done: %u good, %u bad", good, bad);
 
     while (1) { }
 }
