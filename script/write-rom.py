@@ -6,6 +6,16 @@ import serial
 
 from dataclasses import dataclass
 
+verbose = False
+
+def printv(string):
+    if verbose:
+        print(string)
+
+def printq(string):
+    if not verbose:
+        print(string, end='', flush=True)
+
 @dataclass
 class DataResponse:
     address: int
@@ -31,7 +41,7 @@ def get_response(port):
         response = str(port.readline(), 'ascii').rstrip()
         if len(response) == 0:
             response = "<empty>";
-        print(f'<-- {response}')
+        printv(f'<-- {response}')
         if "FAILED:" in response:
             raise RuntimeError(response)
         if "OK:" in response:
@@ -85,14 +95,21 @@ def parse_file(f):
     return ROM(size, pages, records)
 
 def send_file(f, port):
+    print(f'Writing {f.size} bytes in {f.pages} pages')
+    printq('0 %')
     response = get_response(port)
+    written = 0
     for r in f.records:
         data = r.line.encode('ascii')
-        print(f'--> address=0x{r.address:x} size={r.size}')
-        print(f'--> {r.line}')
+        printv(f'--> address=0x{r.address:x} size={r.size}')
+        printv(f'--> {r.line}')
         port.write(data)
         port.write('\n'.encode('ascii'))
         check_response(get_response(port), r)
+        written += r.size
+        printq(f'\r{int(written * 100 / f.size)} %')
+    printq('\n')
+    print(f'Done')
 
 parser = argparse.ArgumentParser(description='Write and verify eeprom')
 
@@ -100,10 +117,13 @@ parser.add_argument('--port',
     default='/dev/ttyUSB0', help='Serial port device')
 parser.add_argument('--speed',
     default=115200, type=int, help='Port speed in baud')
+parser.add_argument('--verbose',
+    default=False, action="store_true", help='Verbose messages')
 parser.add_argument('file',
     nargs=1, help='File of S1 records')
 
 args = parser.parse_args()
+verbose = args.verbose
 
 with serial.Serial(args.port, args.speed, timeout=1) as port:
     with open(args.file[0]) as f:
