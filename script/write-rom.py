@@ -17,6 +17,9 @@ def send_file(file, port):
     response = get_response(port)
     for (i, line) in enumerate(file):
         data = line.encode('ascii')
+        address=int(line[4:8], 16)
+        size=int(line[2:4], 16)-3
+        print(f'--> address=0x{address:x} size={size}');
         print(f'--> {line.rstrip()}')
         port.write(data)
         response = get_response(port)

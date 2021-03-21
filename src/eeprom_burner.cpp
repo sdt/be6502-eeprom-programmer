@@ -108,7 +108,7 @@ bool eb_writeByte(uint16_t address, uint8_t data) {
     return waitForWriteCompletion(data);
 }
 
-extern bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
+bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
     if (size == 0) {
         return true;
     }
@@ -141,6 +141,16 @@ extern bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
 
     return waitForWriteCompletion(data[size - 1]);
 }
+
+bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
+    for (uint8_t offset = 0; offset < size; offset++) {
+        if (eb_readByte(address + offset) != data[offset]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 
 static bool waitForWriteCompletion(uint8_t expectedData) {
 

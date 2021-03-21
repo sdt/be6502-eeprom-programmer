@@ -7,7 +7,7 @@ static bool s_partialBuffer = false;
 static uint16_t readBytesUntil(char terminator, char *buffer, size_t length, uint32_t timeout);
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(115200);
     eb_init();
 }
 
@@ -30,9 +30,20 @@ void loop() {
                 Serial.print("FAIL: error parsing srecord\n");
             }
             else {
-                bool ok = eb_writePage(s1->address, s1->data, s1->dataSize);
-                Serial.print(ok ? "OK" : "FAIL");
-                Serial.print(": address=0x");
+                // Verify the page before writing. It might already have the
+                // data we want.
+                if (eb_verifyPage(s1->address, s1->data, s1->dataSize)) {
+                    Serial.print("OK: [no changes]");
+                }
+                else if (eb_writePage(s1->address, s1->data, s1->dataSize)) {
+                    if (eb_verifyPage(s1->address, s1->data, s1->dataSize)) {
+                        Serial.print("OK: [updated ok]");
+                    }
+                    else {
+                        Serial.print("FAIL: [verify failed]");
+                    }
+                }
+                Serial.print(" address=0x");
                 Serial.print(s1->address, HEX);
                 Serial.print(" size=");
                 Serial.print(s1->dataSize, DEC);
