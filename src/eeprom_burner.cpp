@@ -35,9 +35,6 @@ const uint8_t Data_Read  = 0x00;
 const uint8_t Page_Bits = 6;
 const uint8_t Page_Size = 1 << Page_Bits;
 
-static void setupIdle();
-static void setupRead();
-static void setupWrite();
 static bool waitForWriteCompletion(uint8_t expectedData);
 
 // All three control lines are active low.
