@@ -1,9 +1,30 @@
 #!/usr/bin/env python3
 
 import argparse
+import re
 import serial
 
 from dataclasses import dataclass
+
+@dataclass
+class DataResponse:
+    address: int
+    size: int
+    message: str
+
+def parse_line_response(response):
+    m = re.match(r'^OK: \[(.*)\] address=0x([0-9A-Z]+) size=(\d+)$', response)
+    if m is None:
+        raise RuntimeError(f'Unexpected OK response: {response}')
+    return DataResponse(int(m[2], 16), int(m[3]), m[1])
+
+def check_response(line, expected):
+    got = parse_line_response(line)
+    if expected.size != got.size:
+        raise RuntimeError(f'Expected {expected.size} bytes, got {got.size}')
+    if expected.address != got.address:
+        raise RuntimeError(f'Expected address 0x{expected.address:x} , got 0x{got.address:x}')
+    pass
 
 def get_response(port):
     while True:
@@ -11,10 +32,12 @@ def get_response(port):
         if len(response) == 0:
             response = "<empty>";
         print(f'<-- {response}')
-        if "OK:" in response or "FAILED:" in response:
+        if "FAILED:" in response:
+            raise RuntimeError(response)
+        if "OK:" in response:
             return response
 
-def err(line_num, message):
+def file_err(line_num, message):
     raise RuntimeError(f'Line {line_num} {message}')
 
 @dataclass
@@ -25,23 +48,23 @@ class Record:
 
 def parse_line(line_num, line):
     if line[0:2] != 'S1':
-        err(line_num, f'doesn\'t look like an SREC S1 record')
+        file_err(line_num, f'doesn\'t look like an SREC S1 record')
     if len(line) < 10:
-        err(line_num, f'is too short ({len(line)}) chars')
+        file_err(line_num, f'is too short ({len(line)}) chars')
     byte_count = int(line[2:4], 16)
     if len(line) != (byte_count + 2) * 2:
-        err(line_num, f'length doesn\'t match byte count len={len(line)} bc={byte_count}')
+        file_err(line_num, f'length doesn\'t match byte count len={len(line)} bc={byte_count}')
     start_address = int(line[4:8], 16)
     if start_address >= 32 * 1024:
-        err(line_num, f'address 0x{address:x} is outside 32k')
+        file_err(line_num, f'address 0x{address:x} is outside 32k')
     size = byte_count - 3
     if size > 64:
-        err(line_num, f'page size {size} is over 64 bytes')
+        file_err(line_num, f'page size {size} is over 64 bytes')
     end_address = start_address + size - 1
     start_page = start_address >> 6
     end_page = end_address >> 6
     if start_page != end_page:
-        err(line_num, f'crosses page boundary')
+        file_err(line_num, f'crosses page boundary')
     return Record(start_address, size, line)
 
 @dataclass
@@ -69,7 +92,7 @@ def send_file(f, port):
         print(f'--> {r.line}')
         port.write(data)
         port.write('\n'.encode('ascii'))
-        response = get_response(port)
+        check_response(get_response(port), r)
 
 parser = argparse.ArgumentParser(description='Write and verify eeprom')
 
