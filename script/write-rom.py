@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import serial
 
 def get_response(port):
@@ -20,7 +21,18 @@ def send_file(file, port):
         port.write(data)
         response = get_response(port)
 
-with serial.Serial('/dev/ttyUSB0', 9600, timeout=1) as port:
-    with open('test.srec') as file:
+parser = argparse.ArgumentParser(description='Write and verify eeprom')
+
+parser.add_argument('--port',
+    default='/dev/ttyUSB0', help='Serial port device')
+parser.add_argument('--speed',
+    default=115200, type=int, help='Port speed in baud')
+parser.add_argument('file',
+    nargs=1, help='File of S1 records')
+
+args = parser.parse_args()
+
+with serial.Serial(args.port, args.speed, timeout=1) as port:
+    with open(args.file[0]) as file:
         send_file(file, port)
 
