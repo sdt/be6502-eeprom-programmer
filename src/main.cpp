@@ -12,7 +12,7 @@ void setup() {
 }
 
 void loop() {
-    uint16_t bytesRead = readBytesUntil('\n', s_buffer, sizeof(s_buffer), 1000);
+    uint16_t bytesRead = readBytesUntil('\n', s_buffer, sizeof(s_buffer), 250);
 
     if (bytesRead == 0) {
         Serial.print("OK: ready\n");
