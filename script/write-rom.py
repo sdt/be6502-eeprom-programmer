@@ -34,7 +34,7 @@ def check_response(line, expected):
         raise RuntimeError(f'Expected {expected.size} bytes, got {got.size}')
     if expected.address != got.address:
         raise RuntimeError(f'Expected address 0x{expected.address:x} , got 0x{got.address:x}')
-    pass
+    return got
 
 def get_response(port):
     while True:
@@ -96,18 +96,23 @@ def parse_file(f):
 
 def send_file(f, port):
     print(f'Writing {f.size} bytes in {f.pages} pages')
-    printq('0 %')
     response = get_response(port)
-    written = 0
-    for r in f.records:
-        data = r.line.encode('ascii')
-        printv(f'--> address=0x{r.address:x} size={r.size}')
-        printv(f'--> {r.line}')
+    for record in f.records:
+        data = record.line.encode('ascii')
+        printv(f'--> address=0x{record.address:x} size={record.size}')
+        printv(f'--> {record.line}')
+        printq('>\b')
         port.write(data)
         port.write('\n'.encode('ascii'))
-        check_response(get_response(port), r)
-        written += r.size
-        printq(f'\r{int(written * 100 / f.size)} %')
+        printq('<\b')
+        response = check_response(get_response(port), record)
+        if not args.verbose:
+            if response.message == "no changes":
+                printq('.')
+            elif response.message == "updated ok":
+                printq('W')
+            else:
+                printq(f'?[{response.message}]')
     printq('\n')
     print(f'Done')
 
