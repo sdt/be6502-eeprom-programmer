@@ -94,9 +94,10 @@ def parse_file(f):
         records.append(record)
     return ROM(size, pages, records)
 
-def send_file(f, port):
-    print(f'Writing {f.size} bytes in {f.pages} pages')
-    response = get_response(port)
+def send_file(f, port, verify):
+    verb = "Verifying" if verify else "Writing"
+    print(f'{verb} {f.size} bytes in {f.pages} pages')
+    updated = [ ]
     for record in f.records:
         data = record.line.encode('ascii')
         printv(f'--> address=0x{record.address:x} size={record.size}')
@@ -106,15 +107,18 @@ def send_file(f, port):
         port.write('\n'.encode('ascii'))
         printq('<\b')
         response = check_response(get_response(port), record)
-        if not args.verbose:
-            if response.message == "no changes":
-                printq('.')
-            elif response.message == "updated ok":
-                printq('W')
+        if response.message == "no changes":
+            if verify:
+                printq('v')
             else:
-                printq(f'?[{response.message}]')
+                printq('.')
+        elif response.message == "updated ok":
+            printq('W')
+            updated.append(record)
+        else:
+            raise RuntimeError(f'Unexpected message: "{response.message}"')
     printq('\n')
-    print(f'Done')
+    return updated
 
 parser = argparse.ArgumentParser(description='Write and verify eeprom')
 
@@ -131,6 +135,16 @@ args = parser.parse_args()
 verbose = args.verbose
 
 with serial.Serial(args.port, args.speed, timeout=1) as port:
+    response = get_response(port)
     with open(args.file[0]) as f:
         records = parse_file(f)
-        send_file(records, port)
+        # Send all the records in update mode
+        updated = send_file(records, port, False)
+        # If any got changed, verify them all
+        if updated:
+            failed = send_file(records, port, True)
+            # If any got changed again, something's wrong
+            if failed:
+                print("EEPROM didn't write correctly")
+                exit(1)
+        print("Done")
