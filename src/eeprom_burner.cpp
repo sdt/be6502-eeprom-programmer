@@ -93,13 +93,14 @@ bool eb_writeByte(uint16_t address, uint8_t data) {
     PORT_DIR(DATA) = Data_Write;
     PORT_OUT(DATA) = data;
 
+    // Turn chip select on here at the start, and turn it off again after
+    // waitForWriteCompletion.
     chipSelectOn();
     writeEnableOn();    // falling edge latches address
 
     NOP; NOP;           // tWP = 100
 
     writeEnableOff();   // rising edge latches data
-    chipSelectOff();
 
     NOP;                // tWPH = 50
 
@@ -135,7 +136,6 @@ bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
 
         NOP;                // tWPH = 50
     }
-    chipSelectOff();
     PORT_DIR(DATA) = Data_Read;
 
     return waitForWriteCompletion(data[size - 1]);
@@ -155,25 +155,23 @@ static bool waitForWriteCompletion(uint8_t expectedData) {
 
     const long maxRetries = 100000;
 
-    // On entry, all control lines are off (high), and DATA port is input
-    chipSelectOn();
+    // On entry, chip select is on, output and write enable are off.
+    // DATA port is set to input.
     outputEnableOn();
     NOP; NOP;
     uint8_t prevData = PORT_IN(DATA);
-    chipSelectOff();
     outputEnableOff();
     NOP; NOP;
 
     for (long attempt = 0; attempt < maxRetries; attempt++) {
-        chipSelectOn();
         outputEnableOn();
         NOP; NOP;
         uint8_t nextData = PORT_IN(DATA);
-        chipSelectOff();
         outputEnableOff();
         NOP; NOP;
 
         if (prevData == nextData) {
+            chipSelectOff();
             return nextData == expectedData;
         }
 
@@ -181,6 +179,7 @@ static bool waitForWriteCompletion(uint8_t expectedData) {
     }
 
     // Timed out
+    chipSelectOff();
     return false;
 }
 
