@@ -120,23 +120,22 @@ bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
         return false;
     }
 
+    chipSelectOn();
+    PORT_DIR(DATA) = Data_Write;
     for (uint8_t offset = 0; offset < size; offset++) {
 
         setAddress(address + offset);
-        PORT_DIR(DATA) = Data_Write;
         PORT_OUT(DATA) = data[offset];;
 
-        chipSelectOn();
         writeEnableOn();    // falling edge latches address
 
         NOP; NOP;           // tWP = 100
 
         writeEnableOff();   // rising edge latches data
-        chipSelectOff();
 
         NOP;                // tWPH = 50
     }
-
+    chipSelectOff();
     PORT_DIR(DATA) = Data_Read;
 
     return waitForWriteCompletion(data[size - 1]);
