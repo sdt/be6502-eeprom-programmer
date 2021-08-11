@@ -42,7 +42,7 @@ def get_response(port):
         if len(response) == 0:
             response = "<empty>";
         printv(f'<-- {response}')
-        if "FAILED:" in response:
+        if "FAIL:" in response:
             raise RuntimeError(response)
         if "OK:" in response:
             return response
