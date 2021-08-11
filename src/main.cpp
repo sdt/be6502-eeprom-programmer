@@ -20,14 +20,14 @@ void loop() {
     }
     else if (s_buffer[bytesRead-1] == '\n') {
         if (s_partialBuffer) {
-            Serial.print("FAIL: last part of buffer overrun\n");
+            Serial.print("FAIL: [last part of buffer overrun]\n");
             s_partialBuffer = false;
         }
         else {
             s_buffer[bytesRead-1] = 0;
             SRec1* s1 = parseSRec1(s_buffer, bytesRead-1);
             if (s1 == NULL) {
-                Serial.print("FAIL: error parsing srecord\n");
+                Serial.print("FAIL: [error parsing srecord]");
             }
             else {
                 // Verify the page before writing. It might already have the
@@ -43,6 +43,9 @@ void loop() {
                         Serial.print("FAIL: [verify failed]");
                     }
                 }
+                else {
+                    Serial.print("FAIL: [write failed]");
+                }
                 Serial.print(" address=0x");
                 Serial.print(s1->address, HEX);
                 Serial.print(" size=");
@@ -53,10 +56,10 @@ void loop() {
     }
     else {
         if (s_partialBuffer) {
-            Serial.print("FAIL: next part of buffer overrun\n");
+            Serial.print("FAIL: [next part of buffer overrun]\n");
         }
         else {
-            Serial.print("FAIL: first part of buffer overrun\n");
+            Serial.print("FAIL: [first part of buffer overrun]\n");
         }
         s_partialBuffer = true;
     }
