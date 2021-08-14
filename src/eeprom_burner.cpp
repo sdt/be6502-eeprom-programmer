@@ -70,6 +70,21 @@
     static void chipSelectOn()  { CLEAR_PORT_BIT(CONTROL, Control_CS); }
     static void chipSelectOff() { SET_PORT_BIT(CONTROL,   Control_CS); }
 
+#elif defined(ARDUINO_AVR_NANO)
+
+    static void initPins() { }
+    static void setAddress(uint16_t address) { }
+    static uint8_t readData() { return 0; }
+    static void writeData(uint8_t data) { }
+    static void setDataReadMode() { }
+    static void setDataWriteMode() { }
+
+    static void chipSelectOn()      { }
+    static void chipSelectOff()     { }
+
+    #define CONTROL C
+    const uint8_t Control_OE = BIT(4);
+    const uint8_t Control_WE = BIT(5);
 #else
     #error "Building for UNKNOWN"
 #endif
@@ -215,47 +230,52 @@ static void waitForKey(HardwareSerial& serial) {
 
 #if defined(ARDUINO_AVR_MEGA2560)
 
-#define SET_PIN(number, port, bit)  \
-    PORT_DIR(port) |= 1<<(bit); \
-    PORT_OUT(port) |= 1<<(bit); \
-    serial.println("Pin " #number); \
-    waitForKey(serial); \
-    PORT_OUT(port) &= ~(1<<(bit));
+    #define SET_PIN(number, port, bit)  \
+        PORT_DIR(port) |= 1<<(bit); \
+        PORT_OUT(port) |= 1<<(bit); \
+        serial.println("Pin " #number); \
+        waitForKey(serial); \
+        PORT_OUT(port) &= ~(1<<(bit));
 
-#define SKIP_PIN(number, func) \
-    serial.println("Pin " #number " is " func); \
-    waitForKey(serial);
+    #define SKIP_PIN(number, func) \
+        serial.println("Pin " #number " is " func); \
+        waitForKey(serial);
 
-void eb_pinTest(HardwareSerial& serial) {
-    SET_PIN(1,   ADDR_HIGH, 14-8);
-    SET_PIN(2,   ADDR_HIGH, 12-8);
-    SET_PIN(3,   ADDR_LOW,  7);
-    SET_PIN(4,   ADDR_LOW,  6);
-    SET_PIN(5,   ADDR_LOW,  5);
-    SET_PIN(6,   ADDR_LOW,  4);
-    SET_PIN(7,   ADDR_LOW,  3);
-    SET_PIN(8,   ADDR_LOW,  2);
-    SET_PIN(9,   ADDR_LOW,  1);
-    SET_PIN(10,  ADDR_LOW,  0);
-    SET_PIN(11,  DATA,      0);
-    SET_PIN(12,  DATA,      1);
-    SET_PIN(13,  DATA,      2);
-    SKIP_PIN(14, "ground");
+    void eb_pinTest(HardwareSerial& serial) {
+        SET_PIN(1,   ADDR_HIGH, 14-8);
+        SET_PIN(2,   ADDR_HIGH, 12-8);
+        SET_PIN(3,   ADDR_LOW,  7);
+        SET_PIN(4,   ADDR_LOW,  6);
+        SET_PIN(5,   ADDR_LOW,  5);
+        SET_PIN(6,   ADDR_LOW,  4);
+        SET_PIN(7,   ADDR_LOW,  3);
+        SET_PIN(8,   ADDR_LOW,  2);
+        SET_PIN(9,   ADDR_LOW,  1);
+        SET_PIN(10,  ADDR_LOW,  0);
+        SET_PIN(11,  DATA,      0);
+        SET_PIN(12,  DATA,      1);
+        SET_PIN(13,  DATA,      2);
+        SKIP_PIN(14, "ground");
 
-    SET_PIN(15,  DATA,      3);
-    SET_PIN(16,  DATA,      4);
-    SET_PIN(17,  DATA,      5);
-    SET_PIN(18,  DATA,      6);
-    SET_PIN(19,  DATA,      7);
-    SET_PIN(20,  CONTROL,   4);
-    SET_PIN(21,  ADDR_HIGH, 10-8);
-    SET_PIN(22,  CONTROL,   5);
-    SET_PIN(23,  ADDR_HIGH, 11-8);
-    SET_PIN(24,  ADDR_HIGH, 9-8);
-    SET_PIN(25,  ADDR_HIGH, 8-8);
-    SET_PIN(26,  ADDR_HIGH, 13-8);
-    SET_PIN(27,  CONTROL,   6);
-    SKIP_PIN(28,  "+5V");
-}
+        SET_PIN(15,  DATA,      3);
+        SET_PIN(16,  DATA,      4);
+        SET_PIN(17,  DATA,      5);
+        SET_PIN(18,  DATA,      6);
+        SET_PIN(19,  DATA,      7);
+        SET_PIN(20,  CONTROL,   4);
+        SET_PIN(21,  ADDR_HIGH, 10-8);
+        SET_PIN(22,  CONTROL,   5);
+        SET_PIN(23,  ADDR_HIGH, 11-8);
+        SET_PIN(24,  ADDR_HIGH, 9-8);
+        SET_PIN(25,  ADDR_HIGH, 8-8);
+        SET_PIN(26,  ADDR_HIGH, 13-8);
+        SET_PIN(27,  CONTROL,   6);
+        SKIP_PIN(28,  "+5V");
+    }
 
+#elif defined(ARDUINO_AVR_NANO)
+    void eb_pinTest(HardwareSerial& serial) {
+        serial.println("Woo!");
+        waitForKey(serial);
+    }
 #endif
