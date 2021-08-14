@@ -1,36 +1,78 @@
 #include "eeprom_burner.h"
 
-// PF: A0-A7
-// PK: A8-A14
-// PL: D0-D7
-// PH4: ~CS
-// PH5: ~OE
-// PH6: ~WE
-
+#define BIT(n)                      (1<<(n))
 #define _PASTE(A, B)        A##B
-
 #define PORT_OUT(port_id)           _PASTE(PORT, port_id)
 #define PORT_IN(port_id)            _PASTE(PIN, port_id)
 #define PORT_DIR(port_id)           _PASTE(DDR, port_id)
 #define SET_PORT_BIT(port, mask)    (PORT_OUT(port) |= (mask))
 #define CLEAR_PORT_BIT(port, mask)  (PORT_OUT(port) &= ~(mask))
 
-#define ADDR_LOW            F
-#define ADDR_HIGH           K
-#define DATA                L
-#define CONTROL             H
+#define NOP __asm__ __volatile__ ("nop\n\t") // 65 ns @ 16 Mhz
 
-// 65 ns @ 16 Mhz
-#define NOP __asm__ __volatile__ ("nop\n\t")
+#if defined(ARDUINO_AVR_MEGA2560)
 
-#define BIT(n)  (1<<(n))
+    // PF: A0-A7
+    // PK: A8-A14
+    // PL: D0-D7
+    // PH4: ~CS
+    // PH5: ~OE
+    // PH6: ~WE
+    #define ADDR_LOW            F
+    #define ADDR_HIGH           K
+    #define DATA                L
+    #define CONTROL             H
 
-const uint8_t Control_CS = BIT(4);
-const uint8_t Control_OE = BIT(5);
-const uint8_t Control_WE = BIT(6);
-const uint8_t Control_Mask = Control_CS | Control_OE | Control_WE;
-const uint8_t Data_Write = 0xff;
-const uint8_t Data_Read  = 0x00;
+    const uint8_t Control_CS = BIT(4);
+    const uint8_t Control_OE = BIT(5);
+    const uint8_t Control_WE = BIT(6);
+    const uint8_t Control_Mask = Control_CS | Control_OE | Control_WE;
+    const uint8_t Data_Write = 0xff;
+    const uint8_t Data_Read  = 0x00;
+
+    static void initPins() {
+        PORT_DIR(ADDR_LOW)  = 0xff; // A0-A7 output pins
+        PORT_OUT(ADDR_LOW)  = 0x00;
+
+        PORT_DIR(ADDR_HIGH) = 0x7f; // A8-A15 output pins
+        PORT_OUT(ADDR_HIGH) = 0x00;
+
+        PORT_DIR(DATA)      = Data_Read;
+        PORT_OUT(DATA)      = 0x00; // data is input
+
+        PORT_DIR(CONTROL)   = Control_Mask;
+    }
+
+    static void setAddress(uint16_t address) {
+        uint8_t addr_low  = address & 0x00ff;
+        uint8_t addr_high = address >> 8;
+
+        PORT_OUT(ADDR_LOW)  = addr_low;
+        PORT_OUT(ADDR_HIGH) = addr_high;
+    }
+
+    static uint8_t readData() {
+        return PORT_IN(DATA);
+    }
+
+    static void writeData(uint8_t data) {
+        PORT_OUT(DATA) = data;
+    }
+
+    static void setDataReadMode() {
+        PORT_DIR(DATA) = Data_Read;
+    }
+
+    static void setDataWriteMode() {
+        PORT_DIR(DATA) = Data_Write;
+    }
+
+    static void chipSelectOn()  { CLEAR_PORT_BIT(CONTROL, Control_CS); }
+    static void chipSelectOff() { SET_PORT_BIT(CONTROL,   Control_CS); }
+
+#else
+    #error "Building for UNKNOWN"
+#endif
 
 const uint8_t Page_Bits = 6;
 const uint8_t Page_Size = 1 << Page_Bits;
@@ -38,34 +80,14 @@ const uint8_t Page_Size = 1 << Page_Bits;
 static bool waitForWriteCompletion(uint8_t expectedData);
 
 // All three control lines are active low.
-static void chipSelectOn()      { CLEAR_PORT_BIT(CONTROL, Control_CS); }
-static void chipSelectOff()     { SET_PORT_BIT(CONTROL,   Control_CS); }
-
 static void outputEnableOn()    { CLEAR_PORT_BIT(CONTROL, Control_OE); }
 static void outputEnableOff()   { SET_PORT_BIT(CONTROL,   Control_OE); }
 
 static void writeEnableOn()     { CLEAR_PORT_BIT(CONTROL, Control_WE); }
 static void writeEnableOff()    { SET_PORT_BIT(CONTROL,   Control_WE); }
 
-static void setAddress(uint16_t address) {
-    uint8_t addr_low  = address & 0x00ff;
-    uint8_t addr_high = address >> 8;
-
-    PORT_OUT(ADDR_LOW)  = addr_low;
-    PORT_OUT(ADDR_HIGH) = addr_high;
-}
-
 void eb_init() {
-    PORT_DIR(ADDR_LOW)  = 0xff; // A0-A7 output pins
-    PORT_OUT(ADDR_LOW)  = 0x00;
-
-    PORT_DIR(ADDR_HIGH) = 0x7f; // A8-A15 output pins
-    PORT_OUT(ADDR_HIGH) = 0x00;
-
-    PORT_DIR(DATA)      = Data_Read;
-    PORT_OUT(DATA)      = 0x00; // data is input
-
-    PORT_DIR(CONTROL)   = Control_Mask;
+    initPins();
     chipSelectOff();
     outputEnableOff();
     writeEnableOff();
@@ -78,7 +100,7 @@ uint8_t eb_readByte(uint16_t address) {
 
     NOP; NOP; NOP; // tACC = 150ns, tCE = 150ns, tOE = 70
 
-    uint8_t data = PORT_IN(DATA);
+    uint8_t data = readData();
 
     outputEnableOff();
     chipSelectOff();
@@ -90,8 +112,8 @@ uint8_t eb_readByte(uint16_t address) {
 
 bool eb_writeByte(uint16_t address, uint8_t data) {
     setAddress(address);
-    PORT_DIR(DATA) = Data_Write;
-    PORT_OUT(DATA) = data;
+    setDataWriteMode();
+    writeData(data);
 
     // Turn chip select on here at the start, and turn it off again after
     // waitForWriteCompletion.
@@ -104,7 +126,7 @@ bool eb_writeByte(uint16_t address, uint8_t data) {
 
     NOP;                // tWPH = 50
 
-    PORT_DIR(DATA) = Data_Read;
+    setDataReadMode();
 
     return waitForWriteCompletion(data);
 }
@@ -122,11 +144,11 @@ bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
     }
 
     chipSelectOn();
-    PORT_DIR(DATA) = Data_Write;
+    setDataWriteMode();
     for (uint8_t offset = 0; offset < size; offset++) {
 
         setAddress(address + offset);
-        PORT_OUT(DATA) = data[offset];;
+        writeData(data[offset]);
 
         writeEnableOn();    // falling edge latches address
 
@@ -136,7 +158,7 @@ bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
 
         NOP;                // tWPH = 50
     }
-    PORT_DIR(DATA) = Data_Read;
+    setDataReadMode();
 
     return waitForWriteCompletion(data[size - 1]);
 }
@@ -159,14 +181,14 @@ static bool waitForWriteCompletion(uint8_t expectedData) {
     // DATA port is set to input.
     outputEnableOn();
     NOP; NOP;
-    uint8_t prevData = PORT_IN(DATA);
+    uint8_t prevData = readData();
     outputEnableOff();
     NOP; NOP;
 
     for (long attempt = 0; attempt < maxRetries; attempt++) {
         outputEnableOn();
         NOP; NOP;
-        uint8_t nextData = PORT_IN(DATA);
+        uint8_t nextData = readData();
         outputEnableOff();
         NOP; NOP;
 
@@ -190,6 +212,8 @@ static void waitForKey(HardwareSerial& serial) {
         delay(1);
     }
 }
+
+#if defined(ARDUINO_AVR_MEGA2560)
 
 #define SET_PIN(number, port, bit)  \
     PORT_DIR(port) |= 1<<(bit); \
@@ -234,3 +258,4 @@ void eb_pinTest(HardwareSerial& serial) {
     SKIP_PIN(28,  "+5V");
 }
 
+#endif
