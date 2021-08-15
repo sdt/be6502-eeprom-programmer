@@ -9,7 +9,7 @@
 #define CLEAR_PORT_BIT(port, mask)      (PORT_OUT(port) &= ~(mask))
 #define WRITE_MASKED(reg, value, mask)  (reg) = ((reg) & ~(mask)) | (value)
 
-#define NOP __asm__ __volatile__ ("nop\n\t") // 65 ns @ 16 Mhz
+#define NOP __asm__ __volatile__ ("nop\n\t") // 65 ns @ 16 MHz
 
 #if defined(ARDUINO_AVR_MEGA2560)
 
@@ -46,11 +46,11 @@
     }
 
     static void setAddress(uint16_t address) {
-        uint8_t addr_low  = address & 0x00ff;
-        uint8_t addr_high = address >> 8;
+        uint8_t addrLow  = address & 0x00ff;
+        uint8_t addrHigh = address >> 8;
 
-        PORT_OUT(ADDR_LOW)  = addr_low;
-        PORT_OUT(ADDR_HIGH) = addr_high;
+        PORT_OUT(ADDR_LOW)  = addrLow;
+        PORT_OUT(ADDR_HIGH) = addrHigh;
     }
 
     static uint8_t readData() {
@@ -130,23 +130,6 @@
                                 | PD5_Data5 | PD6_Data6 | PD7_Data7;
     const uint8_t PD_MASK       = PD_DataMask;
 
-    static void initPins() {
-        WRITE_MASKED(PORT_DIR(B), PB2_SS | PB3_MOSI | PB5_SCK, PB_MASK);
-
-        // Set MISO to input-pullup. Clear SCK.
-        WRITE_MASKED(PORT_OUT(B), PB4_MISO, PB4_MISO | PB5_SCK);
-
-        WRITE_MASKED(PORT_DIR(C), PC_MASK, PC_MASK);
-
-        // Set PC0_ROM_WEB & PC1_ROM_OEB high. Other pins low.
-        WRITE_MASKED(PORT_OUT(C), PC0_ROM_WEB | PC1_ROM_OEB, PC_MASK);
-
-        WRITE_MASKED(PORT_DIR(D), 0, PD_MASK);
-
-        // SPI mode zero, master, MSB first.
-        SPCR = BIT(SPE) | BIT(MSTR) | BIT(SPR1) | BIT(SPR0);
-    }
-
     static uint8_t spiSend(uint8_t data) {
         SPDR = data;
         while ((SPSR & BIT(SPIF)) == 0) {
@@ -156,19 +139,34 @@
     }
 
     static uint8_t s_chipSelectMask = 0;
+    static uint8_t s_prevAddrHigh = 0xff;
     static void setAddress(uint16_t address) {
-        uint8_t addr_low  = address & 0x00ff;
-        uint8_t addr_high = (address >> 8) | s_chipSelectMask;
+        uint8_t addrLow  = address & 0x00ff;
+        uint8_t addrHigh = (address >> 8) | s_chipSelectMask;
 
-        //Serial.print("Address: "); Serial.println(address, HEX);
+        uint8_t rclk;
 
-        // High byte first
-        spiSend(addr_high);
-        spiSend(addr_low);
+        if (s_prevAddrHigh == addrHigh) {
+            // High bits don't change, so no need to set them.
+            spiSend(addrLow);
+
+            // Only strobe the low SR
+            rclk = PC3_RCLK1;
+        }
+        else {
+            // High byte first
+            spiSend(addrHigh);
+            spiSend(addrLow);
+
+            // Strobe both SRs
+            rclk = PC3_RCLK1 | PC4_RCLK2;
+
+            s_prevAddrHigh = addrHigh;
+        }
 
         // Strobe the RCLK pins.
-        WRITE_MASKED(PORT_OUT(C), PC3_RCLK1 | PC4_RCLK2, PC3_RCLK1 | PC4_RCLK2);
-        WRITE_MASKED(PORT_OUT(C), 0, PC3_RCLK1 | PC4_RCLK2);
+        SET_PORT_BIT(C, rclk);
+        CLEAR_PORT_BIT(C, rclk);
     }
 
     static uint8_t readData() {
@@ -197,6 +195,32 @@
         // to the high 32k, so A15 needs to be high.
         s_chipSelectMask = chipSelectOn ? 0x00 : 0x80;
         setAddress(address);
+    }
+
+    static void initPins() {
+        WRITE_MASKED(PORT_DIR(B), PB2_SS | PB3_MOSI | PB5_SCK, PB_MASK);
+
+        // Set MISO to input-pullup. Clear SCK.
+        WRITE_MASKED(PORT_OUT(B), PB4_MISO, PB4_MISO | PB5_SCK);
+
+        WRITE_MASKED(PORT_DIR(C), PC_MASK, PC_MASK);
+
+        // Set PC0_ROM_WEB & PC1_ROM_OEB high. Other pins low.
+        WRITE_MASKED(PORT_OUT(C), PC0_ROM_WEB | PC1_ROM_OEB, PC_MASK);
+
+        WRITE_MASKED(PORT_DIR(D), 0, PD_MASK);
+
+        // SPI mode zero, master, MSB first.
+        #define SPI_4MHz   0
+        #define SPI_1MHz   BIT(SPR0)
+        #define SPI_256kHz BIT(SPR1)
+        #define SPI_128kHz (BIT(SPR1) | BIT(SPR0))
+        // 4MHz works, but given the rest of the project only runs at 1Mhz,
+        // it feels a bit safer to stick to 1Mhz. The runttime difference is
+        // pretty small.
+        SPCR = BIT(SPE) | BIT(MSTR) | SPI_1MHz;
+
+        setChipSelect(false, 0);
     }
 
     #define CONTROL C
