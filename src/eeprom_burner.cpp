@@ -1,12 +1,13 @@
 #include "eeprom_burner.h"
 
-#define BIT(n)                      (1<<(n))
-#define _PASTE(A, B)        A##B
-#define PORT_OUT(port_id)           _PASTE(PORT, port_id)
-#define PORT_IN(port_id)            _PASTE(PIN, port_id)
-#define PORT_DIR(port_id)           _PASTE(DDR, port_id)
-#define SET_PORT_BIT(port, mask)    (PORT_OUT(port) |= (mask))
-#define CLEAR_PORT_BIT(port, mask)  (PORT_OUT(port) &= ~(mask))
+#define BIT(n)                          (1<<(n))
+#define _PASTE(A, B)                    A##B
+#define PORT_OUT(port_id)               _PASTE(PORT, port_id)
+#define PORT_IN(port_id)                _PASTE(PIN, port_id)
+#define PORT_DIR(port_id)               _PASTE(DDR, port_id)
+#define SET_PORT_BIT(port, mask)        (PORT_OUT(port) |= (mask))
+#define CLEAR_PORT_BIT(port, mask)      (PORT_OUT(port) &= ~(mask))
+#define WRITE_MASKED(reg, value, mask)  (reg) = ((reg) & ~(mask)) | (value)
 
 #define NOP __asm__ __volatile__ ("nop\n\t") // 65 ns @ 16 Mhz
 
@@ -41,6 +42,7 @@
         PORT_OUT(DATA)      = 0x00; // data is input
 
         PORT_DIR(CONTROL)   = Control_Mask;
+        SET_PORT_BIT(CONTROL, Control_Mask);
     }
 
     static void setAddress(uint16_t address) {
@@ -67,8 +69,14 @@
         PORT_DIR(DATA) = Data_Write;
     }
 
-    static void chipSelectOn()  { CLEAR_PORT_BIT(CONTROL, Control_CS); }
-    static void chipSelectOff() { SET_PORT_BIT(CONTROL,   Control_CS); }
+    static void setChipSelect(bool chipSelectOn, uint16_t) {
+        if (chipSelectOn) {
+            CLEAR_PORT_BIT(CONTROL, Control_CS);
+        }
+        else {
+            SET_PORT_BIT(CONTROL, Control_CS);
+        }
+    }
 
 #elif defined(ARDUINO_AVR_NANO)
 
@@ -94,9 +102,6 @@
     // PC1: ~OE
     // ~CS is on A15
 
-    #define WRITE_MASKED(reg, value, mask) \
-        (reg) = ((reg) & ~(mask)) | (value)
-                                            // Initial DDr
     const uint8_t PB0_Data0     = BIT(0);   // input
     const uint8_t PB1_Data1     = BIT(1);   // input
     const uint8_t PB2_SS        = BIT(2);   // output
@@ -125,7 +130,6 @@
                                 | PD5_Data5 | PD6_Data6 | PD7_Data7;
     const uint8_t PD_MASK       = PD_DataMask;
 
-    static void setAddress(uint16_t address);
     static void initPins() {
         WRITE_MASKED(PORT_DIR(B), PB2_SS | PB3_MOSI | PB5_SCK, PB_MASK);
 
@@ -151,9 +155,10 @@
         return data;
     }
 
+    static uint8_t s_chipSelectMask = 0;
     static void setAddress(uint16_t address) {
         uint8_t addr_low  = address & 0x00ff;
-        uint8_t addr_high = address >> 8;
+        uint8_t addr_high = (address >> 8) | s_chipSelectMask;
 
         //Serial.print("Address: "); Serial.println(address, HEX);
 
@@ -186,8 +191,13 @@
         WRITE_MASKED(PORT_DIR(D), PD_DataMask, PD_DataMask);
     }
 
-    static void chipSelectOn()      { }
-    static void chipSelectOff()     { }
+    static void setChipSelect(bool chipSelectOn, uint16_t address) {
+        // In the standalone circuit, CS is active low.
+        // When we integrate this into the be6502 board, the EEPROM is mapped
+        // to the high 32k, so A15 needs to be high.
+        s_chipSelectMask = chipSelectOn ? 0x00 : 0x80;
+        setAddress(address);
+    }
 
     #define CONTROL C
     const uint8_t Control_OE = BIT(1);
@@ -210,9 +220,6 @@ static void writeEnableOff()    { SET_PORT_BIT(CONTROL,   Control_WE); }
 
 void eb_init() {
     initPins();
-    chipSelectOff();
-    outputEnableOff();
-    writeEnableOff();
 }
 
 bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
@@ -227,7 +234,7 @@ bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
         return false;
     }
 
-    chipSelectOn();
+    setChipSelect(true, address);
     setDataWriteMode();
     for (uint8_t offset = 0; offset < size; offset++) {
 
@@ -248,8 +255,7 @@ bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
 }
 
 bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
-    setAddress(address);
-    chipSelectOn();
+    setChipSelect(true, address);
     outputEnableOn();
 
     bool ok = true;
@@ -270,7 +276,7 @@ bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
     }
 
     outputEnableOff();
-    chipSelectOff();
+    setChipSelect(false, 0);
 
     return ok;
 }
@@ -288,6 +294,8 @@ static bool waitForWriteCompletion(uint8_t expectedData) {
     outputEnableOff();
     NOP; NOP;
 
+    bool ok = false;
+
     for (long attempt = 0; attempt < maxRetries; attempt++) {
         outputEnableOn();
         NOP; NOP;
@@ -296,16 +304,15 @@ static bool waitForWriteCompletion(uint8_t expectedData) {
         NOP; NOP;
 
         if (prevData == nextData) {
-            chipSelectOff();
-            return nextData == expectedData;
+            ok = (nextData == expectedData);
+            break;
         }
 
         prevData = nextData;
     }
 
-    // Timed out
-    chipSelectOff();
-    return false;
+    setChipSelect(false, 0);
+    return ok;
 }
 
 static void waitForKey(HardwareSerial& serial) {
