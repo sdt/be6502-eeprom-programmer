@@ -215,44 +215,6 @@ void eb_init() {
     writeEnableOff();
 }
 
-uint8_t eb_readByte(uint16_t address) {
-    setAddress(address);
-    chipSelectOn();
-    outputEnableOn();
-
-    NOP; NOP; NOP; // tACC = 150ns, tCE = 150ns, tOE = 70
-
-    uint8_t data = readData();
-
-    outputEnableOff();
-    chipSelectOff();
-
-    NOP; // tDF = 50ns
-
-    return data;
-}
-
-bool eb_writeByte(uint16_t address, uint8_t data) {
-    setAddress(address);
-    setDataWriteMode();
-    writeData(data);
-
-    // Turn chip select on here at the start, and turn it off again after
-    // waitForWriteCompletion.
-    chipSelectOn();
-    writeEnableOn();    // falling edge latches address
-
-    NOP; NOP;           // tWP = 100
-
-    writeEnableOff();   // rising edge latches data
-
-    NOP;                // tWPH = 50
-
-    setDataReadMode();
-
-    return waitForWriteCompletion(data);
-}
-
 bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
     if (size == 0) {
         return true;
@@ -286,12 +248,31 @@ bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
 }
 
 bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
+    setAddress(address);
+    chipSelectOn();
+    outputEnableOn();
+
+    bool ok = true;
+
     for (uint8_t offset = 0; offset < size; offset++) {
-        if (eb_readByte(address + offset) != data[offset]) {
-            return false;
+        setAddress(address + offset);
+
+        NOP; NOP; NOP; // tACC = 150ns, tCE = 150ns, tOE = 70
+
+        uint8_t byteRead = readData();
+
+        if (byteRead != data[offset]) {
+            ok = false;
+            break;
         }
+
+        NOP; // tDF = 50ns
     }
-    return true;
+
+    outputEnableOff();
+    chipSelectOff();
+
+    return ok;
 }
 
 
