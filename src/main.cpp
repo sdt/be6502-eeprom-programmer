@@ -103,7 +103,7 @@ static void stateActive() {
         op = VerifyPage;
     }
     else {
-        nak("Unexpected in idle state", s_buffer);
+        nak("Unexpected in active state", s_buffer);
         // TODO - error state?
         return;
     }
