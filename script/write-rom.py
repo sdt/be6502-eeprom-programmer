@@ -145,7 +145,7 @@ args = parser.parse_args()
 verbose = args.verbose
 
 with serial.Serial(args.port, args.speed, timeout=1) as port:
-    expect_ack(port, 'READY')
+    expect(port, r'^READY$', 'ping')
     send(port, 'BEGIN')
     expect_ack(port, 'BEGIN')
     with open(args.file[0]) as f:

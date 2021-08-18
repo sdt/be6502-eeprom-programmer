@@ -67,7 +67,7 @@ void loop() {
 
 static void stateIdle() {
     if (s_buffer[0] == 0) {
-        ack("READY");
+        Serial.print("READY\n");
         return;
     }
 
