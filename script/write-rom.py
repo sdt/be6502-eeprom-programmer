@@ -3,6 +3,7 @@
 import argparse
 import re
 import serial
+import sys
 
 from dataclasses import dataclass
 
@@ -37,7 +38,7 @@ def get_response(port):
         printv(f'<-- {response}')
         if "NAK:" in response:
             raise RuntimeError(response)
-        if "ACK:" in response:
+        if "ACK:" in response or response == 'READY':
             return response
         raise RuntimeError(f'Unexpected response: {response}')
 
@@ -113,7 +114,7 @@ def send_file(f, port, verify):
     updated = 0
     for record in f.records:
         data = record.line
-        printv(f'--> address=0x{record.address:x} size={record.size}')
+        printv(f'Sending page: address=0x{record.address:x} size={record.size}')
         printq('>\b')
         send(port, prefix + data)
         match = expect(port, r'^ACK:([WV]):([0-9A-Z]+):(\d+)$', 'page response')
@@ -144,17 +145,24 @@ parser.add_argument('file',
 args = parser.parse_args()
 verbose = args.verbose
 
-with serial.Serial(args.port, args.speed, timeout=1) as port:
-    expect(port, r'^READY$', 'ping')
-    send(port, 'BEGIN')
-    expect_ack(port, 'BEGIN')
-    with open(args.file[0]) as f:
-        records = parse_file(f)
-        # Send all the records in update mode
-        updated = send_file(records, port, False)
-        # If any got changed, verify them all
-        if updated > 0:
-            send_file(records, port, True)
-    send(port, 'END')
-    expect_ack(port, 'END')
-    print("Done")
+try:
+    with serial.Serial(args.port, args.speed, timeout=1) as port:
+        expect(port, r'^READY$', 'ping')
+        send(port, 'BEGIN')
+        expect_ack(port, 'BEGIN')
+        with open(args.file[0]) as f:
+            records = parse_file(f)
+            # Send all the records in update mode
+            updated = send_file(records, port, False)
+            # If any got changed, verify them all
+            if updated > 0:
+                send_file(records, port, True)
+        send(port, 'END')
+        expect_ack(port, 'END')
+        print("Done")
+except Exception as e:
+    prefix = "NAK:"
+    msg = str(e)
+    msg = msg[len(prefix):] if msg.startswith(prefix) else msg
+    print(msg)
+    sys.exit(1)

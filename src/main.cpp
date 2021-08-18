@@ -79,7 +79,7 @@ static void stateIdle() {
         return;
     }
 
-    nak("Unexpected in idle state:", s_buffer);
+    nak("Unexpected in idle state", s_buffer);
 }
 
 static void stateActive() {
@@ -104,7 +104,7 @@ static void stateActive() {
         op = VerifyPage;
     }
     else {
-        nak("Unexpected in idle state:", s_buffer);
+        nak("Unexpected in idle state", s_buffer);
         // TODO - error state?
         return;
     }
@@ -112,7 +112,7 @@ static void stateActive() {
     // If we get here, we're either writing or verifying an srec.
     SRec1* s1 = parseSRec1(s_buffer+1, strlen(s_buffer+1));
     if (s1 == NULL) {
-        nak("Invalid srecord:", s_buffer);
+        nak("Invalid srecord", s_buffer);
         // TODO - error state?
         return;
     }
@@ -168,6 +168,7 @@ static void nak(const char* message) {
 static void nak(const char* message1, const char* message2) {
     Serial.print("NAK:");
     Serial.print(message1);
+    Serial.print(": ");
     Serial.print(message2);
     Serial.print("\n");
 }
