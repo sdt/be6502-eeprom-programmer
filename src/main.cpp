@@ -31,7 +31,7 @@ void setup() {
 }
 
 void loop() {
-    uint16_t bytesRead = readBytesUntil('\n', s_buffer, sizeof(s_buffer), 250);
+    uint16_t bytesRead = readBytesUntil('\n', s_buffer, sizeof(s_buffer), 1000);
 
     if (s_partialBuffer) {
         // The previous line overflowed the buffer, and we discarded it.
@@ -172,6 +172,9 @@ static void nak(const char* message1, const char* message2) {
     Serial.print("\n");
 }
 
+// Reads bytes until the terminator is reached, or we hit the end of the buffer,
+// or the timeout elapses between bytes being received. Each time a character
+// is received, the timeout is extended.
 static uint16_t readBytesUntil(char terminator, char *buffer, size_t length, uint32_t timeout) {
     uint32_t startMillis = millis();
     uint16_t index = 0;
@@ -180,11 +183,13 @@ static uint16_t readBytesUntil(char terminator, char *buffer, size_t length, uin
         if (c < 0)
             continue;
 
+        startMillis = millis(); // we got a character - reset the timer
+
         *buffer++ = (char)c;
         index++;
 
         if (c == terminator)
             break;
     }
-    return index; // return number of characters, not including null terminator
+    return index; // return number of characters
 }
