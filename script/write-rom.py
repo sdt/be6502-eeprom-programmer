@@ -3,6 +3,7 @@
 import argparse
 import re
 import serial
+import sys
 
 from dataclasses import dataclass
 
@@ -20,32 +21,44 @@ def printq(string):
 class DataResponse:
     address: int
     size: int
-    message: str
 
-def parse_line_response(response):
-    m = re.match(r'^OK: \[(.*)\] address=0x([0-9A-Z]+) size=(\d+)$', response)
-    if m is None:
-        raise RuntimeError(f'Unexpected OK response: {response}')
-    return DataResponse(int(m[2], 16), int(m[3]), m[1])
-
-def check_response(line, expected):
-    got = parse_line_response(line)
+def check_page(expected, match):
+    got = DataResponse(int(match[2], 16), int(match[3]))
     if expected.size != got.size:
         raise RuntimeError(f'Expected {expected.size} bytes, got {got.size}')
     if expected.address != got.address:
         raise RuntimeError(f'Expected address 0x{expected.address:x} , got 0x{got.address:x}')
-    return got
 
 def get_response(port):
     while True:
         response = str(port.readline(), 'ascii').rstrip()
         if len(response) == 0:
-            response = "<empty>";
+            printv(f'<-- []')
+            continue
         printv(f'<-- {response}')
-        if "FAIL:" in response:
+        if "NAK:" in response:
             raise RuntimeError(response)
-        if "OK:" in response:
+        if "ACK:" in response or response == 'READY':
             return response
+        raise RuntimeError(f'Unexpected response: {response}')
+
+def expect(port, regex, description):
+    response = get_response(port)
+    match = re.match(regex, response)
+    if match is None:
+        raise RuntimeError(f'Unexpected {description} response: {response}')
+    return match
+
+def expect_ack(port, ack):
+    response = get_response(port)
+    if response != 'ACK:' + ack:
+        raise RuntimeError(f'Expected ACK:{ack}, got: {response}')
+    return
+
+def send(port, string):
+    printv(f'--> {string}')
+    port.write(string.encode('ascii'))
+    port.write('\n'.encode('ascii'))
 
 def file_err(line_num, message):
     raise RuntimeError(f'Line {line_num} {message}')
@@ -96,27 +109,25 @@ def parse_file(f):
 
 def send_file(f, port, verify):
     verb = "Verifying" if verify else "Writing"
+    prefix = "V" if verify else "W"
     print(f'{verb} {f.size} bytes in {f.pages} pages')
-    updated = [ ]
+    updated = 0
     for record in f.records:
-        data = record.line.encode('ascii')
-        printv(f'--> address=0x{record.address:x} size={record.size}')
-        printv(f'--> {record.line}')
+        data = record.line
+        printv(f'Sending page: address=0x{record.address:x} size={record.size}')
         printq('>\b')
-        port.write(data)
-        port.write('\n'.encode('ascii'))
+        send(port, prefix + data)
+        match = expect(port, r'^ACK:([WV]):([0-9A-Z]+):(\d+)$', 'page response')
         printq('<\b')
-        response = check_response(get_response(port), record)
-        if response.message == "no changes":
+        check_page(record, match)
+        if match[1] == "V":
             if verify:
                 printq('v')
             else:
                 printq('.')
-        elif response.message == "updated ok":
-            printq('W')
-            updated.append(record)
         else:
-            raise RuntimeError(f'Unexpected message: "{response.message}"')
+            printq('W')
+            updated = updated + 1
     printq('\n')
     return updated
 
@@ -134,17 +145,24 @@ parser.add_argument('file',
 args = parser.parse_args()
 verbose = args.verbose
 
-with serial.Serial(args.port, args.speed, timeout=1) as port:
-    response = get_response(port)
-    with open(args.file[0]) as f:
-        records = parse_file(f)
-        # Send all the records in update mode
-        updated = send_file(records, port, False)
-        # If any got changed, verify them all
-        if updated:
-            failed = send_file(records, port, True)
-            # If any got changed again, something's wrong
-            if failed:
-                print("EEPROM didn't write correctly")
-                exit(1)
+try:
+    with serial.Serial(args.port, args.speed, timeout=1) as port:
+        expect(port, r'^READY$', 'ping')
+        send(port, 'BEGIN')
+        expect_ack(port, 'BEGIN')
+        with open(args.file[0]) as f:
+            records = parse_file(f)
+            # Send all the records in update mode
+            updated = send_file(records, port, False)
+            # If any got changed, verify them all
+            if updated > 0:
+                send_file(records, port, True)
+        send(port, 'END')
+        expect_ack(port, 'END')
         print("Done")
+except Exception as e:
+    prefix = "NAK:"
+    msg = str(e)
+    msg = msg[len(prefix):] if msg.startswith(prefix) else msg
+    print(msg)
+    sys.exit(1)

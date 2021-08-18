@@ -233,7 +233,7 @@
 const uint8_t Page_Bits = 6;
 const uint8_t Page_Size = 1 << Page_Bits;
 
-static bool waitForWriteCompletion(uint8_t expectedData);
+static ebError waitForWriteCompletion(uint8_t expectedData);
 
 // All three control lines are active low.
 static void outputEnableOn()    { CLEAR_PORT_BIT(CONTROL, Control_OE); }
@@ -246,16 +246,16 @@ void eb_init() {
     initPins();
 }
 
-bool eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
+ebError eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
     if (size == 0) {
-        return true;
+        return ebError_OK;
     }
 
     uint16_t startPage = address >> Page_Bits;
     uint16_t endPage   = (address + size - 1) >> Page_Bits;
 
     if (startPage != endPage) {
-        return false;
+        return ebError_PageBoundaryCrossed;
     }
 
     setChipSelect(true, address);
@@ -305,8 +305,27 @@ bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
     return ok;
 }
 
+const char* eb_errorMessage(ebError error) {
+    switch (error) {
 
-static bool waitForWriteCompletion(uint8_t expectedData) {
+    case ebError_OK:
+        return "OK";
+
+    case ebError_PageBoundaryCrossed:
+        return "page boundary crossed";
+
+    case ebError_WriteCompletionDataMismatch:
+        return "write completion data mismatch";
+
+    case ebError_WriteCompletionTimeout:
+        return "write completion timeout";
+
+    default:
+        return "unknown error code";
+    }
+}
+
+static ebError waitForWriteCompletion(uint8_t expectedData) {
 
     const long maxRetries = 100000;
 
@@ -318,7 +337,7 @@ static bool waitForWriteCompletion(uint8_t expectedData) {
     outputEnableOff();
     NOP; NOP;
 
-    bool ok = false;
+    ebError ret = ebError_WriteCompletionTimeout;
 
     for (long attempt = 0; attempt < maxRetries; attempt++) {
         outputEnableOn();
@@ -328,7 +347,8 @@ static bool waitForWriteCompletion(uint8_t expectedData) {
         NOP; NOP;
 
         if (prevData == nextData) {
-            ok = (nextData == expectedData);
+            ret = (nextData == expectedData)
+                ? ebError_OK : ebError_WriteCompletionDataMismatch;
             break;
         }
 
@@ -336,7 +356,7 @@ static bool waitForWriteCompletion(uint8_t expectedData) {
     }
 
     setChipSelect(false, 0);
-    return ok;
+    return ret;
 }
 
 static void waitForKey(HardwareSerial& serial) {
