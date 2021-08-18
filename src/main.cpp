@@ -67,6 +67,18 @@ static void stateIdle() {
 }
 
 static void stateActive() {
+    if (strcmp(s_buffer, "BEGIN") == 0) {
+        // We might have this happen if the previous write failed midway
+        // through, and we never got an END. Rather than reject it, just
+        // allow it.
+        //
+        // Not sure if this still applies. It might not hurt to do it anyway.
+        // TODO: capture 6502 bus, set up eeprom burner
+
+        ack("BEGIN");
+        return;
+    }
+
     if (strcmp(s_buffer, "END") == 0) {
         // TODO: deinit eeprom burner, release 6502 bus, reset 6502
 
