@@ -136,11 +136,8 @@ static void stateActive() {
         return;
     }
 
-    if (!eb_verifyPage(s1->address, s1->data, s1->dataSize)) {
-        // If the verify failed, bail.
-        nak("Write succeeded, but verify failed");
-        return;
-    }
+    // We used to immediately verify the page, but the calling script does
+    // that anyway, so no real need to double-verify it.
 
     // All good :+1:
     ack(s1, WritePage);
