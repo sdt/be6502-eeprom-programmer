@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# The hangups at startup are caused by hupcl being enabled, which something
+# something DTR resets the arduino when you connect to the serial.
+# Running this to disable hupcl, and the arduino won't reset, and things all
+# work.
+
+stty -F /dev/ttyUSB0 -hupcl
