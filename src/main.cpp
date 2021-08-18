@@ -38,7 +38,7 @@ void loop() {
         if (bytesRead == 0) {
             nak("Empty next part of buffer overrun");
         }
-        else if (s_buffer[bytesRead] != '\n') {
+        else if (s_buffer[bytesRead-1] != '\n') {
             nak("Next part of buffer overrun");
         }
         else {
