@@ -38,7 +38,7 @@ def get_response(port):
         printv(f'<-- {response}')
         if "NAK:" in response:
             raise RuntimeError(response)
-        if "ACK:" in response or response == 'READY':
+        if "ACK:" in response:
             return response
         raise RuntimeError(f'Unexpected response: {response}')
 
@@ -147,7 +147,6 @@ verbose = args.verbose
 
 try:
     with serial.Serial(args.port, args.speed, timeout=1) as port:
-        expect(port, r'^READY$', 'ping')
         send(port, 'BEGIN')
         expect_ack(port, 'BEGIN')
         with open(args.file[0]) as f:
