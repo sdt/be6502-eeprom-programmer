@@ -3,7 +3,6 @@
 #include "srec.h"
 
 static char s_buffer[c_srecBufferSize + 1];
-static bool s_partialBuffer = false;
 static uint16_t readBytesUntil(char terminator, char *buffer, size_t length, uint32_t timeout);
 
 static void stateIdle();
@@ -33,30 +32,20 @@ void setup() {
 void loop() {
     uint16_t bytesRead = readBytesUntil('\n', s_buffer, sizeof(s_buffer), 1000);
 
-    if (s_partialBuffer) {
-        // The previous line overflowed the buffer, and we discarded it.
-        if (bytesRead == 0) {
-            nak("Empty next part of buffer overrun");
-        }
-        else if (s_buffer[bytesRead-1] != '\n') {
-            nak("Next part of buffer overrun");
-        }
-        else {
-            nak("Last part of buffer overrun");
-            s_partialBuffer = false;
-        }
-        return;
-    }
-
-    if (bytesRead == 0) {
-        s_buffer[0] = 0;
-        s_state();
+    if (bytesRead <= 1) {
+        // Ignore this case. No input, or just a newline.
         return;
     }
 
     if (s_buffer[bytesRead-1] != '\n') {
-        nak("First part of buffer overrun");
-        s_partialBuffer = true;
+        // If the final char of the buffer isn't a newline, we either timed out
+        // or we reached the end of the buffer.
+        if (bytesRead == sizeof(s_buffer)) {
+            nak("Buffer overrun");
+        }
+        else {
+            nak("Serial read timeout");
+        }
         return;
     }
 
@@ -66,10 +55,6 @@ void loop() {
 }
 
 static void stateIdle() {
-    if (s_buffer[0] == 0) {
-        return;
-    }
-
     if (strcmp(s_buffer, "BEGIN") == 0) {
         // TODO: capture 6502 bus, set up eeprom burner
 
@@ -82,11 +67,6 @@ static void stateIdle() {
 }
 
 static void stateActive() {
-    if (s_buffer[0] == 0) {
-        // Do we ack this? I don't think so.
-        return;
-    }
-
     if (strcmp(s_buffer, "END") == 0) {
         // TODO: deinit eeprom burner, release 6502 bus, reset 6502
 
