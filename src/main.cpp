@@ -8,7 +8,6 @@ static uint16_t readBytesUntil(char terminator, char *buffer, size_t length, uin
 
 static void stateIdle();
 static void stateActive();
-static void stateError();
 
 typedef void (State)(void);
 static State* s_state;
@@ -130,9 +129,10 @@ static void stateActive() {
         return;
     }
 
-    if (!eb_writePage(s1->address, s1->data, s1->dataSize)) {
+    ebError status = eb_writePage(s1->address, s1->data, s1->dataSize);
+    if (status != ebError_OK) {
         // If the write failed, bail.
-        nak("Write failed");
+        nak("Write failed", eb_errorMessage(status));
         return;
     }
 
@@ -144,10 +144,6 @@ static void stateActive() {
 
     // All good :+1:
     ack(s1, WritePage);
-}
-
-static void stateError() {
-    nak("in error state");
 }
 
 static void ack(const char* message) {
