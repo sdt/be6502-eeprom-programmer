@@ -3,7 +3,6 @@
 #include "srec.h"
 
 static char s_buffer[c_srecBufferSize + 1];
-static bool s_partialBuffer = false;
 static uint16_t readBytesUntil(char terminator, char *buffer, size_t length, uint32_t timeout);
 
 static void stateIdle();
@@ -28,35 +27,38 @@ void setup() {
     s_state = stateIdle;
 
     eb_init(); // TODO: do this after begin
+
+    // This bugged me for ages. Connecting to the serial port on the arduino
+    // causes it to reset. The sending script will send whatever, but the
+    // arduino would be busy resetting, and miss it, and then they'd all be
+    // out of sync.
+    //
+    // Running `stty -F $PORT -hupl` fixes the problem, but that gets reset
+    // by various things.
+    //
+    // What works is to send RESET here, which causes the script to retry the
+    // begin sequence. The script does the stty fix at the same time, ready for
+    // the next run.
+    Serial.print("RESET\n");
 }
 
 void loop() {
-    uint16_t bytesRead = readBytesUntil('\n', s_buffer, sizeof(s_buffer), 250);
+    uint16_t bytesRead = readBytesUntil('\n', s_buffer, sizeof(s_buffer), 1000);
 
-    if (s_partialBuffer) {
-        // The previous line overflowed the buffer, and we discarded it.
-        if (bytesRead == 0) {
-            nak("Empty next part of buffer overrun");
-        }
-        else if (s_buffer[bytesRead] != '\n') {
-            nak("Next part of buffer overrun");
-        }
-        else {
-            nak("Last part of buffer overrun");
-            s_partialBuffer = false;
-        }
-        return;
-    }
-
-    if (bytesRead == 0) {
-        s_buffer[0] = 0;
-        s_state();
+    if (bytesRead <= 1) {
+        // Ignore this case. No input, or just a newline.
         return;
     }
 
     if (s_buffer[bytesRead-1] != '\n') {
-        nak("First part of buffer overrun");
-        s_partialBuffer = true;
+        // If the final char of the buffer isn't a newline, we either timed out
+        // or we reached the end of the buffer.
+        if (bytesRead == sizeof(s_buffer)) {
+            nak("Buffer overrun");
+        }
+        else {
+            nak("Serial read timeout");
+        }
         return;
     }
 
@@ -66,11 +68,6 @@ void loop() {
 }
 
 static void stateIdle() {
-    if (s_buffer[0] == 0) {
-        Serial.print("READY\n");
-        return;
-    }
-
     if (strcmp(s_buffer, "BEGIN") == 0) {
         // TODO: capture 6502 bus, set up eeprom burner
 
@@ -83,8 +80,15 @@ static void stateIdle() {
 }
 
 static void stateActive() {
-    if (s_buffer[0] == 0) {
-        // Do we ack this? I don't think so.
+    if (strcmp(s_buffer, "BEGIN") == 0) {
+        // We might have this happen if the previous write failed midway
+        // through, and we never got an END. Rather than reject it, just
+        // allow it.
+        //
+        // Not sure if this still applies. It might not hurt to do it anyway.
+        // TODO: capture 6502 bus, set up eeprom burner
+
+        ack("BEGIN");
         return;
     }
 
@@ -104,7 +108,7 @@ static void stateActive() {
         op = VerifyPage;
     }
     else {
-        nak("Unexpected in idle state", s_buffer);
+        nak("Unexpected in active state", s_buffer);
         // TODO - error state?
         return;
     }
@@ -173,6 +177,9 @@ static void nak(const char* message1, const char* message2) {
     Serial.print("\n");
 }
 
+// Reads bytes until the terminator is reached, or we hit the end of the buffer,
+// or the timeout elapses between bytes being received. Each time a character
+// is received, the timeout is extended.
 static uint16_t readBytesUntil(char terminator, char *buffer, size_t length, uint32_t timeout) {
     uint32_t startMillis = millis();
     uint16_t index = 0;
@@ -181,11 +188,13 @@ static uint16_t readBytesUntil(char terminator, char *buffer, size_t length, uin
         if (c < 0)
             continue;
 
+        startMillis = millis(); // we got a character - reset the timer
+
         *buffer++ = (char)c;
         index++;
 
         if (c == terminator)
             break;
     }
-    return index; // return number of characters, not including null terminator
+    return index; // return number of characters
 }

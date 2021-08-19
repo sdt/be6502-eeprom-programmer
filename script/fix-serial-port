@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# The hangups at startup are caused by hupcl being enabled, which something
+# something DTR resets the arduino when you connect to the serial.
+# Run this to disable hupcl, which stops the arudino from resetting on serial
+# connect.
+#
+# This is now handled by write-rom.py - this script is left here mostly for
+# documentation purposes.
+
+: ${PORT:=/dev/ttyUSB0}
+
+echo stty -F $PORT -hupcl
+stty -F $PORT -hupcl

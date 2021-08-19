@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import re
 import serial
 import sys
 
 from dataclasses import dataclass
+
+# We raise this exception if we get a RESET response from the arduino. That
+# means the arduino was resetting, and has just come back up. When we detect
+# that condition, we call `stty -F $PORT -hupcl` to fix it for next time, then
+# start the BEGIN sequence afresh.
+class ResetException(Exception):
+    pass
 
 verbose = False
 
@@ -36,10 +44,12 @@ def get_response(port):
             printv(f'<-- []')
             continue
         printv(f'<-- {response}')
+        if "ACK:" in response:
+            return response
         if "NAK:" in response:
             raise RuntimeError(response)
-        if "ACK:" in response or response == 'READY':
-            return response
+        if response == 'RESET':
+            raise ResetException
         raise RuntimeError(f'Unexpected response: {response}')
 
 def expect(port, regex, description):
@@ -147,9 +157,18 @@ verbose = args.verbose
 
 try:
     with serial.Serial(args.port, args.speed, timeout=1) as port:
-        expect(port, r'^READY$', 'ping')
-        send(port, 'BEGIN')
-        expect_ack(port, 'BEGIN')
+
+        ready = False
+        while not ready:
+            try:
+                send(port, 'BEGIN')
+                expect_ack(port, 'BEGIN')
+                ready = True
+            except ResetException:
+                print("Ignoring RESET, resending BEGIN")
+                # Fix the serial port setup and retry
+                os.system(f'stty -F {args.port} -hupcl')
+
         with open(args.file[0]) as f:
             records = parse_file(f)
             # Send all the records in update mode
@@ -157,9 +176,11 @@ try:
             # If any got changed, verify them all
             if updated > 0:
                 send_file(records, port, True)
+
         send(port, 'END')
         expect_ack(port, 'END')
         print("Done")
+
 except Exception as e:
     prefix = "NAK:"
     msg = str(e)

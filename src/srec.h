@@ -16,6 +16,6 @@ struct SRec1 {
 extern SRec1* parseSRec1(char* buffer, uint16_t size);
 
 // Input record will be a maximum of 2 + 2 + 255 * 2 = 514 bytes
-const uint16_t c_srecBufferSize = 514;
+const uint16_t c_srecBufferSize = 515; // allow space for a newline
 
 #endif // INCLUDE_SREC_H
