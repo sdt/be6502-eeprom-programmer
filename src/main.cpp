@@ -27,6 +27,19 @@ void setup() {
     s_state = stateIdle;
 
     eb_init(); // TODO: do this after begin
+
+    // This bugged me for ages. Connecting to the serial port on the arduino
+    // causes it to reset. The sending script will send whatever, but the
+    // arduino would be busy resetting, and miss it, and then they'd all be
+    // out of sync.
+    //
+    // Running `stty -F $PORT -hupl` fixes the problem, but that gets reset
+    // by various things.
+    //
+    // What works is to send RESET here, which causes the script to retry the
+    // begin sequence. The script does the stty fix at the same time, ready for
+    // the next run.
+    Serial.print("RESET\n");
 }
 
 void loop() {
