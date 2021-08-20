@@ -26,7 +26,7 @@ void setup() {
     Serial.begin(115200);
     s_state = stateIdle;
 
-    eb_init(); // TODO: do this after begin
+    eb_init();
 
     // This bugged me for ages. Connecting to the serial port on the arduino
     // causes it to reset. The sending script will send whatever, but the
@@ -69,8 +69,7 @@ void loop() {
 
 static void stateIdle() {
     if (strcmp(s_buffer, "BEGIN") == 0) {
-        // TODO: capture 6502 bus, set up eeprom burner
-
+        eb_beginSession();
         s_state = stateActive;
         ack("BEGIN");
         return;
@@ -86,15 +85,13 @@ static void stateActive() {
         // allow it.
         //
         // Not sure if this still applies. It might not hurt to do it anyway.
-        // TODO: capture 6502 bus, set up eeprom burner
-
+        eb_beginSession();
         ack("BEGIN");
         return;
     }
 
     if (strcmp(s_buffer, "END") == 0) {
-        // TODO: deinit eeprom burner, release 6502 bus, reset 6502
-
+        eb_endSession(true);
         s_state = stateIdle;
         ack("END");
         return;
