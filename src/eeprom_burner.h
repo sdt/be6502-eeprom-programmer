@@ -8,12 +8,18 @@ enum ebError {
     ebError_PageBoundaryCrossed,
     ebError_WriteCompletionDataMismatch,
     ebError_WriteCompletionTimeout,
+    ebError_OutOfSession,
 };
 
 extern void eb_init();
+extern void eb_beginSession();
+extern void eb_endSession(bool doReset);
+
 extern ebError eb_writePage(uint16_t address, const uint8_t* data, uint8_t size);
 extern bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size);
-extern void eb_pinTest(HardwareSerial& serial);
+
 extern const char* eb_errorMessage(ebError error);
+
+extern void eb_pinTest(HardwareSerial& serial);
 
 #endif // INCLUDE_EEPROM_BURNER_H

@@ -44,6 +44,9 @@ def get_response(port):
             printv(f'<-- []')
             continue
         printv(f'<-- {response}')
+        if "MSG:" in response:
+            print(response)
+            continue
         if "ACK:" in response:
             return response
         if "NAK:" in response:
