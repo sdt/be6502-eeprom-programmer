@@ -229,10 +229,14 @@ static void captureBus();
     }
 
     static void setChipSelect(bool chipSelectOn, uint16_t address) {
+#if defined(IN_CIRCUIT_6502)
+        // On the 6502 board, the ROM is mapped to the high 32k by connecting
+        // ~A15 to the CS pin. Setting A15 brings CS low to activate.
+        s_chipSelectMask = chipSelectOn ? 0x80 : 0x00;
+#else
         // In the standalone circuit, CS is active low.
-        // When we integrate this into the be6502 board, the EEPROM is mapped
-        // to the high 32k, so A15 needs to be high.
         s_chipSelectMask = chipSelectOn ? 0x00 : 0x80;
+#endif
         setAddress(address);
     }
 
