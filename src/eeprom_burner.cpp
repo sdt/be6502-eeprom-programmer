@@ -123,9 +123,12 @@ static void captureBus();
     // in. We can't rely on the arduino holding things in a disabled state.
     // We need pullup/pulldown resistors on the following pins:
     //
-    // PS2_BUS_BE       - pull up - bus is normally enabled
-    // PS4_BUS_RESB     - pull up - reset is normally disabled
-    // PC5_BUS_RDY      - pull up - 6502 is normally ready
+    // PB4_BUS_RES connects to the reset circuit now, not directly to the RESB
+    // pin. Pull it high to reset.
+    //
+    // PS2_BUS_BE       - pull up   - bus is normally enabled
+    // PB4_BUS_RES      - pull down - reset input is normally low
+    // PC5_BUS_RDY      - pull up   - 6502 is normally ready
     //
     // PC0_ROM_WEB      - pull up - ROM is normally write disabled
     // PC1_ROM_OEB      - pull dn - ROM is normally output enabled
@@ -137,11 +140,11 @@ static void captureBus();
     const uint8_t PB1_Data1     = BIT(1);   // i/o              hi-z
     const uint8_t PB2_BUS_BE    = BIT(2);   // output           hi-z
     const uint8_t PB3_MOSI      = BIT(3);   // output           output
-    const uint8_t PB4_BUS_RESB  = BIT(4);   // hi-z/output-low  hi-z
+    const uint8_t PB4_BUS_RES   = BIT(4);   // hi-z/output-hi   hi-z
     const uint8_t PB5_SCK       = BIT(5);   // output           output
     const uint8_t PB_DataMask   = PB0_Data0 | PB1_Data1;
     const uint8_t PB_SR_MASK    = PB3_MOSI | PB5_SCK;
-    const uint8_t PB_BUS_MASK   = PB2_BUS_BE | PB4_BUS_RESB;
+    const uint8_t PB_BUS_MASK   = PB2_BUS_BE | PB4_BUS_RES;
     const uint8_t PB_MASK       = PB_DataMask | PB_SR_MASK | PB_BUS_MASK;
 
     const uint8_t PC0_ROM_WEB   = BIT(0);   // output           hi-z
@@ -271,13 +274,13 @@ static void captureBus();
         // The 6502 is now halted, and has released the bus, we're clear to
         // turn everything on.
 
-        // We have the BUS_RESB pin attached to MISO. For SPI to work, this
-        // needs to be set to be an input. There is a physical pull-up resistor
-        // on this pin, so don't enable the internal pullup.
-        WRITE_MASKED(PORT_DIR(B), 0, PB4_BUS_RESB);
-        WRITE_MASKED(PORT_OUT(B), 0, PB4_BUS_RESB);
+        // We have the BUS_RES pin attached to MISO. For SPI to work, this
+        // needs to be set to be an input. There is a physical pull-down
+        // resistor on this pin, so don't enable the internal pullup.
+        WRITE_MASKED(PORT_DIR(B), 0, PB4_BUS_RES);
+        WRITE_MASKED(PORT_OUT(B), 0, PB4_BUS_RES);
 
-        // BE, MOSI & SCK are already set up. RESB needs to be left alone.
+        // BE, MOSI & SCK are already set up. RES needs to be left alone.
         // ROM_OEB and ROM_WEB need to be set to output-hi. SR_EOB needs to be
         // set to output-lo.
         WRITE_MASKED(PORT_OUT(C), PC_ROM_MASK,
@@ -322,10 +325,10 @@ static void captureBus();
         WRITE_MASKED(PORT_OUT(D), 0, PD_MASK);
         WRITE_MASKED(PORT_DIR(D), 0, PD_MASK);
 
-        // If we're going to reset, pull the reset pin low first.
+        // If we're going to reset, pull the reset pin high.
         if (reset) {
-            WRITE_MASKED(PORT_OUT(B), 0, PB4_BUS_RESB);
-            WRITE_MASKED(PORT_DIR(B), PB4_BUS_RESB, PB4_BUS_RESB);
+            WRITE_MASKED(PORT_OUT(B), PB4_BUS_RES, PB4_BUS_RES);
+            WRITE_MASKED(PORT_DIR(B), PB4_BUS_RES, PB4_BUS_RES);
         }
 
         // Re-enable the bus. Release BE and let it be pulled high.
@@ -337,11 +340,11 @@ static void captureBus();
         WRITE_MASKED(PORT_OUT(C), 0, PC5_BUS_RDY);
         WRITE_MASKED(PORT_DIR(C), 0, PC5_BUS_RDY);
 
-        // If we had the reset pin low, release it and let it be pulled high.
+        // If we had the reset pin high, release it and let it be pulled low.
         if (reset) {
             delay(100);
-            WRITE_MASKED(PORT_OUT(B), 0, PB4_BUS_RESB);
-            WRITE_MASKED(PORT_DIR(B), 0, PB4_BUS_RESB);
+            WRITE_MASKED(PORT_OUT(B), 0, PB4_BUS_RES);
+            WRITE_MASKED(PORT_DIR(B), 0, PB4_BUS_RES);
         }
     }
 
