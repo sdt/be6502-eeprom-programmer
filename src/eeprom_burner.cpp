@@ -378,6 +378,38 @@ void eb_endSession(bool doReset) {
     s_busCaptured = false;
 }
 
+ebError eb_chipErase() {
+    if (!s_busCaptured) {
+        return ebError_OutOfSession;
+    }
+
+    uint16_t address[] = { 0x5555, 0x2aaa, 0x5555, 0x5555, 0x2aaa, 0x5555 };
+    uint8_t  data[]    = {   0xaa,   0x55,   0x80,   0xaa,   0x55,   0x10 };
+
+    setChipSelect(true, address[0]);
+    setDataWriteMode();
+
+    for (uint8_t i = 0; i < 6; i++) {
+
+        setAddress(address[i]);
+        writeData(data[i]);
+
+        writeEnableOn();    // falling edge latches address
+
+        NOP; NOP;           // tWP = 100
+
+        writeEnableOff();   // rising edge latches data
+
+        NOP;                // tWPH = 50
+    }
+
+    setDataReadMode();
+    delay(25); // Erase cycle is <= 20ms
+    setChipSelect(false, 0);
+
+    return ebError_OK;
+}
+
 ebError eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
     if (!s_busCaptured) {
         return ebError_OutOfSession;

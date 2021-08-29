@@ -97,6 +97,17 @@ static void stateActive() {
         return;
     }
 
+    if (strcmp(s_buffer, "ERASE") == 0) {
+        ebError status = eb_chipErase();
+        if (status == ebError_OK) {
+            ack("ERASE");
+        }
+        else {
+            nak("Chip erase failed", eb_errorMessage(status));
+        }
+        return;
+    }
+
     PageOp op;
     if (s_buffer[0] == 'W') {
         op = WritePage;
