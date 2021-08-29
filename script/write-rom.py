@@ -146,6 +146,9 @@ def send_file(f, port, verify):
 
 parser = argparse.ArgumentParser(description='Write and verify eeprom')
 
+
+parser.add_argument('--erase',
+    default=False, action="store_true", help='Erase chip')
 parser.add_argument('--port',
     default='/dev/ttyUSB0', help='Serial port device')
 parser.add_argument('--speed',
@@ -153,7 +156,7 @@ parser.add_argument('--speed',
 parser.add_argument('--verbose',
     default=False, action="store_true", help='Verbose messages')
 parser.add_argument('file',
-    nargs=1, help='File of S1 records')
+    nargs='?', help='File of S1 records')
 
 args = parser.parse_args()
 verbose = args.verbose
@@ -172,13 +175,20 @@ try:
                 # Fix the serial port setup and retry
                 os.system(f'stty -F {args.port} -hupcl')
 
-        with open(args.file[0]) as f:
-            records = parse_file(f)
-            # Send all the records in update mode
-            updated = send_file(records, port, False)
-            # If any got changed, verify them all
-            if updated > 0:
-                send_file(records, port, True)
+        if args.erase:
+            send(port, 'ERASE')
+            expect_ack(port, 'ERASE')
+
+        if args.file is not None:
+            with open(args.file) as f:
+                records = parse_file(f)
+                # Send all the records in update mode
+                updated = send_file(records, port, False)
+                # If any got changed, verify them all
+                if updated > 0:
+                    send_file(records, port, True)
+        elif not args.erase:
+            print("No file specified, and not erasing. Nothing to do.")
 
         send(port, 'END')
         expect_ack(port, 'END')
