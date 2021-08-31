@@ -355,7 +355,7 @@ static void captureBus();
 const uint8_t Page_Bits = 6;
 const uint8_t Page_Size = 1 << Page_Bits;
 
-static ebError waitForWriteCompletion(uint8_t expectedData);
+static ebError waitForWriteCompletion(uint8_t expectedData, uint16_t address);
 
 // All three control lines are active low.
 static void outputEnableOn()    { CLEAR_PORT_BIT(CONTROL, Control_OE); }
@@ -443,7 +443,7 @@ ebError eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
     }
     setDataReadMode();
 
-    return waitForWriteCompletion(data[size - 1]);
+    return waitForWriteCompletion(data[size - 1], address + size - 1);
 }
 
 bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
@@ -500,25 +500,26 @@ const char* eb_errorMessage(ebError error) {
     }
 }
 
-static ebError waitForWriteCompletion(uint8_t expectedData) {
-
+static ebError waitForWriteCompletion(uint8_t expectedData, uint16_t address) {
     const long maxRetries = 100000;
 
     // On entry, chip select is on, output and write enable are off.
     // DATA port is set to input.
     outputEnableOn();
     NOP; NOP;
+
     uint8_t prevData = readData();
-    outputEnableOff();
+
+    setChipSelect(false, address);
     NOP; NOP;
 
     ebError ret = ebError_WriteCompletionTimeout;
 
     for (long attempt = 0; attempt < maxRetries; attempt++) {
-        outputEnableOn();
+        setChipSelect(true, address);
         NOP; NOP;
         uint8_t nextData = readData();
-        outputEnableOff();
+        setChipSelect(false, address);
         NOP; NOP;
 
         if (prevData == nextData) {
