@@ -511,14 +511,17 @@ static ebError waitForWriteCompletion(uint8_t expectedData, uint16_t address) {
     uint8_t prevData = readData();
 
     setChipSelect(false, address);
+    outputEnableOff();
     NOP; NOP;
 
     ebError ret = ebError_WriteCompletionTimeout;
 
     for (long attempt = 0; attempt < maxRetries; attempt++) {
         setChipSelect(true, address);
+        outputEnableOn();
         NOP; NOP;
         uint8_t nextData = readData();
+        outputEnableOff();
         setChipSelect(false, address);
         NOP; NOP;
 
