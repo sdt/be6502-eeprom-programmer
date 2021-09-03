@@ -355,7 +355,7 @@ static void captureBus();
 const uint8_t Page_Bits = 6;
 const uint8_t Page_Size = 1 << Page_Bits;
 
-static ebError waitForWriteCompletion(uint8_t expectedData);
+static ebError waitForWriteCompletion(uint8_t expectedData, uint16_t address);
 
 // All three control lines are active low.
 static void outputEnableOn()    { CLEAR_PORT_BIT(CONTROL, Control_OE); }
@@ -443,10 +443,10 @@ ebError eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
     }
     setDataReadMode();
 
-    return waitForWriteCompletion(data[size - 1]);
+    return waitForWriteCompletion(data[size - 1], address + size - 1);
 }
 
-bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
+bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size, bool verbose) {
     if (!s_busCaptured) {
         return false;
     }
@@ -465,6 +465,17 @@ bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
 
         if (byteRead != data[offset]) {
             ok = false;
+            if (verbose) {
+                Serial.print("MSG:Verify failed at page ");
+                Serial.print(address / 64);
+                Serial.print(" offset ");
+                Serial.print(offset);
+                Serial.print("\nMSG:Expecting 0x");
+                Serial.print(data[offset], HEX);
+                Serial.print(", got 0x");
+                Serial.print(byteRead, HEX);
+                Serial.print("\n");
+            }
             break;
         }
 
@@ -500,28 +511,43 @@ const char* eb_errorMessage(ebError error) {
     }
 }
 
-static ebError waitForWriteCompletion(uint8_t expectedData) {
-
+static ebError waitForWriteCompletion(uint8_t expectedData, uint16_t address) {
     const long maxRetries = 100000;
 
     // On entry, chip select is on, output and write enable are off.
     // DATA port is set to input.
     outputEnableOn();
     NOP; NOP;
+
     uint8_t prevData = readData();
+
+    setChipSelect(false, address);
     outputEnableOff();
     NOP; NOP;
 
     ebError ret = ebError_WriteCompletionTimeout;
 
     for (long attempt = 0; attempt < maxRetries; attempt++) {
+        setChipSelect(true, address);
         outputEnableOn();
         NOP; NOP;
         uint8_t nextData = readData();
         outputEnableOff();
+        setChipSelect(false, address);
         NOP; NOP;
 
         if (prevData == nextData) {
+            if (nextData != expectedData) {
+                Serial.print("MSG:Write poll data mismatch at page ");
+                Serial.print(address / 64);
+                Serial.print(" on attempt ");
+                Serial.print(attempt);
+                Serial.print("\nMSG:Expected 0x");
+                Serial.print(expectedData, HEX);
+                Serial.print(", got 0x");
+                Serial.print(nextData, HEX);
+                Serial.print("\n");
+            }
             ret = (nextData == expectedData)
                 ? ebError_OK : ebError_WriteCompletionDataMismatch;
             break;

@@ -22,6 +22,8 @@ static void ack(const SRec1* srec, PageOp op);
 static void nak(const char* message);
 static void nak(const char* message1, const char* message2);
 
+static void msg(const char* message);
+
 void setup() {
     Serial.begin(115200);
     s_state = stateIdle;
@@ -141,18 +143,31 @@ static void stateActive() {
         return;
     }
 
-    ebError status = eb_writePage(s1->address, s1->data, s1->dataSize);
-    if (status != ebError_OK) {
-        // If the write failed, bail.
-        nak("Write failed", eb_errorMessage(status));
-        return;
+    int retries = 0;
+    while (1) {
+        ebError status = eb_writePage(s1->address, s1->data, s1->dataSize);
+        if (status == ebError_OK) {
+            // All good :+1:
+            ack(s1, WritePage);
+            return;
+        }
+
+        // If write page failed, delay, and then see if it wrote anyway.
+        delay(1);
+        if (eb_verifyPage(s1->address, s1->data, s1->dataSize, true)) {
+            msg("Write failed, but verified ok");
+            ack(s1, WritePage);
+            return;
+        }
+
+        if (++retries > 5) {
+            nak("Write failed", eb_errorMessage(status));
+            return;
+        }
+        else {
+            msg("Write and verify failed - retrying");
+        }
     }
-
-    // We used to immediately verify the page, but the calling script does
-    // that anyway, so no real need to double-verify it.
-
-    // All good :+1:
-    ack(s1, WritePage);
 }
 
 static void ack(const char* message) {
@@ -182,6 +197,12 @@ static void nak(const char* message1, const char* message2) {
     Serial.print(message1);
     Serial.print(": ");
     Serial.print(message2);
+    Serial.print("\n");
+}
+
+static void msg(const char* message) {
+    Serial.print("MSG:");
+    Serial.print(message);
     Serial.print("\n");
 }
 
