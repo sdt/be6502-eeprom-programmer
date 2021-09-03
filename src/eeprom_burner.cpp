@@ -446,7 +446,7 @@ ebError eb_writePage(uint16_t address, const uint8_t* data, uint8_t size) {
     return waitForWriteCompletion(data[size - 1], address + size - 1);
 }
 
-bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
+bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size, bool verbose) {
     if (!s_busCaptured) {
         return false;
     }
@@ -465,6 +465,17 @@ bool eb_verifyPage(uint16_t address, const uint8_t* data, uint8_t size) {
 
         if (byteRead != data[offset]) {
             ok = false;
+            if (verbose) {
+                Serial.print("MSG:Verify failed at page ");
+                Serial.print(address / 64);
+                Serial.print(" offset ");
+                Serial.print(offset);
+                Serial.print("\nMSG:Expecting 0x");
+                Serial.print(data[offset], HEX);
+                Serial.print(", got 0x");
+                Serial.print(byteRead, HEX);
+                Serial.print("\n");
+            }
             break;
         }
 
@@ -526,6 +537,17 @@ static ebError waitForWriteCompletion(uint8_t expectedData, uint16_t address) {
         NOP; NOP;
 
         if (prevData == nextData) {
+            if (nextData != expectedData) {
+                Serial.print("MSG:Write poll data mismatch at page ");
+                Serial.print(address / 64);
+                Serial.print(" on attempt ");
+                Serial.print(attempt);
+                Serial.print("\nMSG:Expected 0x");
+                Serial.print(expectedData, HEX);
+                Serial.print(", got 0x");
+                Serial.print(nextData, HEX);
+                Serial.print("\n");
+            }
             ret = (nextData == expectedData)
                 ? ebError_OK : ebError_WriteCompletionDataMismatch;
             break;

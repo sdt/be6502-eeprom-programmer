@@ -154,8 +154,8 @@ static void stateActive() {
 
         // If write page failed, delay, and then see if it wrote anyway.
         delay(1);
-        if (eb_verifyPage(s1->address, s1->data, s1->dataSize)) {
-            //msg("Write failed, but verified ok");
+        if (eb_verifyPage(s1->address, s1->data, s1->dataSize, true)) {
+            msg("Write failed, but verified ok");
             ack(s1, WritePage);
             return;
         }
@@ -165,7 +165,7 @@ static void stateActive() {
             return;
         }
         else {
-            msg("Write failed - retrying");
+            msg("Write and verify failed - retrying");
         }
     }
 }
